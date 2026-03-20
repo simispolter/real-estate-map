@@ -1,0 +1,10 @@
+.git
+.next
+.venv
+__pycache__
+node_modules
+dist
+db-data
+outputs
+parsed_reports
+raw_reports

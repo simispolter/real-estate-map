@@ -3,3 +3,9 @@
 __pycache__/
 *.pyc
 outputs/tmp/
+node_modules/
+.next/
+dist/
+.pytest_cache/
+db-data/
+*.tsbuildinfo

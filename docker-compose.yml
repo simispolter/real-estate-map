@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: real-estat-map-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-real_estate_map}
+      POSTGRES_USER: ${POSTGRES_USER:-real_estate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-real_estate}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/db/migrations:/docker-entrypoint-initdb.d
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: real-estat-map-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      APP_VERSION: 0.1.0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-real_estate}:${POSTGRES_PASSWORD:-real_estate}@db:5432/${POSTGRES_DB:-real_estate_map}
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-3000}
+    depends_on:
+      - db
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./apps/api:/app
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: real-estat-map-web
+    command: sh -c "npm install && npm run dev --workspace @real-estat-map/web -- --hostname 0.0.0.0 --port 3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - .:/workspace
+      - web-node-modules:/workspace/node_modules
+
+volumes:
+  db-data:
+  web-node-modules:
