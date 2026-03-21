@@ -11,43 +11,51 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./infra/db/migrations:/docker-entrypoint-initdb.d
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: real-estat-map-api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: /app/scripts/docker-dev.sh
     environment:
       APP_ENV: development
       DEBUG: "true"
       APP_VERSION: 0.1.0
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-real_estate}:${POSTGRES_PASSWORD:-real_estate}@db:5432/${POSTGRES_DB:-real_estate_map}
       CORS_ORIGINS: http://localhost:${WEB_PORT:-3000}
+      MIGRATIONS_DIR: /migrations
     depends_on:
       - db
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
       - ./apps/api:/app
+      - ./infra/db/migrations:/migrations:ro
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: real-estat-map-web
-    command: sh -c "npm install && npm run dev --workspace @real-estat-map/web -- --hostname 0.0.0.0 --port 3000"
+    command: /workspace/apps/web/scripts/docker-dev.sh
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
+      INTERNAL_API_BASE_URL: http://api:8000
+      WATCHPACK_POLLING: "true"
     depends_on:
       - api
     ports:
       - "${WEB_PORT:-3000}:3000"
     volumes:
-      - .:/workspace
+      - ./package.json:/workspace/package.json:ro
+      - ./package-lock.json:/workspace/package-lock.json:ro
+      - ./apps/web:/workspace/apps/web
+      - ./packages/shared:/workspace/packages/shared
       - web-node-modules:/workspace/node_modules
+      - web-next-build:/workspace/apps/web/.next
 
 volumes:
   db-data:
   web-node-modules:
+  web-next-build:

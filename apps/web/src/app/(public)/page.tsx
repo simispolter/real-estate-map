@@ -3,25 +3,54 @@ import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { ProjectMapPanel } from "@/components/dashboard/project-map-panel";
 import { ProjectTable } from "@/components/dashboard/project-table";
 import { Tag } from "@/components/ui/tag";
-import { filterGroups, homeKpis, placeholderProjectRows } from "@/lib/content";
+import { getFiltersMetadata, getHomeKpis, getMapProjects, getProjects } from "@/lib/api";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const [kpis, filters, projects, mapResults] = await Promise.all([
+    getHomeKpis(),
+    getFiltersMetadata(),
+    getProjects({ page_size: "6" }),
+    getMapProjects({}),
+  ]);
+  const filterFields = [
+    {
+      label: "City",
+      name: "city",
+      options: filters.cities.map((city) => ({ label: city, value: city })),
+    },
+    {
+      label: "Company",
+      name: "company_id",
+      options: filters.companies
+        .filter((company) => company.id)
+        .map((company) => ({ label: company.label, value: company.id as string })),
+    },
+    {
+      label: "Project business type",
+      name: "project_business_type",
+      options: filters.projectBusinessTypes.map((value) => ({ label: value, value })),
+    },
+  ];
+
   return (
     <>
       <section className="hero">
         <div className="hero-card content-stack">
           <div>
-            <p className="eyebrow">Sprint 1 Foundation</p>
-            <h2>Public exploration starts with a canonical residential project surface.</h2>
+            <p className="eyebrow">Sprint 1 Phase 2</p>
+            <h2>Public exploration now runs on a real residential seed from public company reports.</h2>
           </div>
           <p>
-            This first phase keeps the public catalog, project filters, KPI framing, and map placeholder
-            aligned with the schema-first product direction from the docs.
+            The public workspace now reads sourced residential project data for five Israeli public
+            developers, with provenance preserved for the fields we publish and nulls left intact when the
+            report is silent.
           </p>
           <div className="hero-actions">
             <Tag>Residential only</Tag>
-            <Tag>Public/admin split</Tag>
-            <Tag tone="warning">No Mapbox yet</Tag>
+            <Tag>Real public data</Tag>
+            <Tag tone="warning">No PDF parser yet</Tag>
           </div>
         </div>
         <aside className="hero-aside content-stack">
@@ -30,23 +59,26 @@ export default function HomePage() {
             <h3>What this release intentionally does not do</h3>
           </div>
           <p className="panel-copy">
-            PDF parsing, real map rendering, and ingestion workflows are left out on purpose. The repo now
-            has the structure those pieces can plug into without rework.
+            PDF parsing, automated ingestion, authentication, and real map rendering are still deferred on
+            purpose. This slice proves the real schema, real API, real DB, and public UI can all work
+            together now.
           </p>
         </aside>
       </section>
 
       <FiltersPanel
-        title="Search and filter scaffold"
-        description="Filter state is represented as a dedicated surface from the first sprint so URL synchronization and public API wiring can land without redesign."
-        items={filterGroups}
+        action="/projects"
+        title="Public search surface"
+        description="These controls already mirror the public API query surface and submit directly into the live `/projects` route."
+        fields={filterFields}
+        resetHref="/"
       />
 
-      <KpiGrid items={homeKpis} title="Public KPI scaffold" />
+      <KpiGrid items={kpis} title="Public KPI view" />
 
       <section className="two-column-grid">
-        <ProjectTable rows={placeholderProjectRows} title="Latest public projects" />
-        <ProjectMapPanel />
+        <ProjectTable rows={projects.items} title="Latest public projects" />
+        <ProjectMapPanel state={mapResults.state} mapData={mapResults.item} />
       </section>
     </>
   );

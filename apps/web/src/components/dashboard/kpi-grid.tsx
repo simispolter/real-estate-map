@@ -4,9 +4,11 @@ export function KpiGrid({
   items,
   title,
 }: {
-  items: KpiDefinition[];
+  items?: KpiDefinition[] | null;
   title: string;
 }) {
+  const safeItems = Array.isArray(items) ? items : [];
+
   return (
     <section className="content-stack">
       <div className="section-heading">
@@ -16,15 +18,22 @@ export function KpiGrid({
           hardcoded demo numbers.
         </p>
       </div>
-      <div className="kpi-grid">
-        {items.map((item) => (
-          <article key={item.id} className="kpi-card">
-            <p className="eyebrow">{item.label}</p>
-            <strong>{item.value}</strong>
-            {item.note ? <p className="panel-copy">{item.note}</p> : null}
-          </article>
-        ))}
-      </div>
+      {safeItems.length > 0 ? (
+        <div className="kpi-grid">
+          {safeItems.map((item) => (
+            <article key={item.id} className="kpi-card">
+              <p className="eyebrow">{item.label}</p>
+              <strong>{item.value}</strong>
+              {item.note ? <p className="panel-copy">{item.note}</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <strong>No KPI data is available yet.</strong>
+          <p className="panel-copy">The page is still healthy, but the upstream data did not produce KPI cards.</p>
+        </div>
+      )}
     </section>
   );
 }

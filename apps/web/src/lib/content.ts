@@ -1,4 +1,4 @@
-import type { KpiDefinition, PlaceholderProjectRow } from "@real-estat-map/shared";
+import type { KpiDefinition } from "@real-estat-map/shared";
 
 export const publicNavigation = [
   { href: "/", label: "Overview" },
@@ -9,31 +9,10 @@ export const publicNavigation = [
 
 export const adminNavigation = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/admin/reports", label: "Reports" },
+  { href: "/admin/projects", label: "Projects Review" },
   { href: "/admin#reports", label: "Reports Queue" },
-  { href: "/admin#review", label: "Review Queue" },
-  { href: "/admin#location", label: "Location Assignment" },
   { href: "/admin#publish", label: "Publish Center" },
-];
-
-export const homeKpis: KpiDefinition[] = [
-  {
-    id: "projects",
-    label: "Published residential projects",
-    value: "--",
-    note: "Populates once published snapshots are available.",
-  },
-  {
-    id: "unsold",
-    label: "Unsold units surfaced",
-    value: "--",
-    note: "Derived from the latest canonical project snapshots.",
-  },
-  {
-    id: "companies",
-    label: "Public companies covered",
-    value: "--",
-    note: "Company coverage expands after ingestion lands in Sprint 2.",
-  },
 ];
 
 export const companyKpis: KpiDefinition[] = [
@@ -76,15 +55,4 @@ export const adminKpis: KpiDefinition[] = [
     value: "0",
     note: "Public/admin separation is established before the workflow arrives.",
   },
-];
-
-export const placeholderProjectRows: PlaceholderProjectRow[] = [];
-
-export const filterGroups = [
-  { label: "City", value: "Not connected yet" },
-  { label: "Neighborhood", value: "Not connected yet" },
-  { label: "Company", value: "Not connected yet" },
-  { label: "Project type", value: "Residential-only" },
-  { label: "Permit status", value: "Planned API filter" },
-  { label: "Report period", value: "Latest snapshot only" },
 ];

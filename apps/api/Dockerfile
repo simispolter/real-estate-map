@@ -9,6 +9,9 @@ COPY apps/api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY apps/api /app
+COPY infra/db/migrations /migrations
+
+RUN chmod +x /app/scripts/docker-dev.sh
 
 EXPOSE 8000
 

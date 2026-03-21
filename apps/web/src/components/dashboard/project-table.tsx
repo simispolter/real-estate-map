@@ -1,6 +1,8 @@
-import type { PlaceholderProjectRow } from "@real-estat-map/shared";
+import type { ProjectListItem } from "@real-estat-map/shared";
+import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
+import { Tag } from "@/components/ui/tag";
 
 const columns = [
   "Project",
@@ -8,21 +10,24 @@ const columns = [
   "City",
   "Type",
   "Status",
-  "Location confidence",
+  "Known units",
+  "Unsold",
 ] as const;
 
 export function ProjectTable({
   rows,
   title = "Project table",
 }: {
-  rows: PlaceholderProjectRow[];
+  rows?: ProjectListItem[] | null;
   title?: string;
 }) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+
   return (
     <Panel
       eyebrow="Results"
       title={title}
-      description="The table structure is live now, while data binding is deferred until public API endpoints start reading the canonical database."
+      description="Latest public residential projects from the seeded database, with only source-backed values surfaced."
     >
       <div className="table-wrap">
         <table className="data-table">
@@ -34,22 +39,33 @@ export function ProjectTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length > 0 ? (
-              rows.map((row) => (
-                <tr key={`${row.companyName}-${row.canonicalName}`}>
-                  <td>{row.canonicalName}</td>
-                  <td>{row.companyName}</td>
-                  <td>{row.city}</td>
-                  <td>{row.projectBusinessType}</td>
-                  <td>{row.status}</td>
-                  <td>{row.locationConfidence}</td>
+            {safeRows.length > 0 ? (
+              safeRows.map((row) => (
+                <tr key={row.projectId}>
+                  <td>
+                    <Link href={`/projects/${row.projectId}`}>{row.canonicalName}</Link>
+                  </td>
+                  <td>
+                    <Link href={`/companies/${row.company.id}`}>{row.company?.nameHe ?? "Unknown company"}</Link>
+                  </td>
+                  <td>{row.city ?? "Unknown"}</td>
+                  <td>
+                    <div className="stacked-cell">
+                      <span>{row.projectBusinessType}</span>
+                      <Tag tone={row.locationQuality === "exact" ? "accent" : row.locationQuality === "unknown" ? "warning" : "default"}>
+                        {row.locationQuality}
+                      </Tag>
+                    </div>
+                  </td>
+                  <td>{row.projectStatus ?? "Not disclosed"}</td>
+                  <td>{row.marketedUnits ?? row.totalUnits ?? "Not disclosed"}</td>
+                  <td>{row.unsoldUnits ?? "Not disclosed"}</td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td colSpan={columns.length} className="empty-table">
-                  No public project rows yet. This surface is waiting for published snapshots from the
-                  FastAPI backend.
+                  No project rows are available right now. Try clearing filters or check that the API seed is loaded.
                 </td>
               </tr>
             )}

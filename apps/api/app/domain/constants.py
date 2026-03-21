@@ -1,0 +1,6 @@
+CONFIDENCE_LEVELS = ("high", "medium", "low")
+VALUE_ORIGIN_TYPES = ("reported", "inferred", "manual", "imported", "unknown")
+LOCATION_QUALITY_LEVELS = ("exact", "approximate", "city-only", "unknown")
+REPORT_INGESTION_STATUSES = ("draft", "ready_for_staging", "in_review", "published", "rejected")
+MATCHING_STATUSES = ("unmatched", "matched_existing_project", "new_project_needed", "ambiguous_match", "ignored")
+PUBLISH_STATUSES = ("draft", "in_review", "partially_approved", "published", "rejected")

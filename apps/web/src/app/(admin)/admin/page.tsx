@@ -31,7 +31,13 @@ export default function AdminPage() {
           title="Review queue"
           description="Project review, classification overrides, and merge tooling will attach here after ingestion creates canonical projects and conflicts."
         >
-          <p className="panel-copy">Review-safe publication remains separate from raw extracted data.</p>
+          <p className="panel-copy">
+            Review-safe publication remains separate from raw extracted data. Live review surface:
+            {" "}
+            <a className="inline-link" href="/admin/projects">
+              /admin/projects
+            </a>
+          </p>
         </Panel>
         <Panel
           eyebrow="Location"
