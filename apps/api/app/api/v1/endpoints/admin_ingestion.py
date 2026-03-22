@@ -9,6 +9,7 @@ from app.schemas.ingestion import (
     AdminCandidateDetailResponse,
     AdminCandidateMatchRequest,
     AdminCandidatePublishRequest,
+    AdminParserRunsResponse,
     AdminCandidateUpdateRequest,
     AdminReportCandidatesResponse,
     AdminReportCreateRequest,
@@ -28,6 +29,7 @@ from app.services.ingestion import (
     update_admin_report,
     update_candidate,
 )
+from app.services.parser_pipeline import list_report_parser_runs, run_report_extraction
 
 router = APIRouter()
 
@@ -68,6 +70,28 @@ async def patch_admin_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
     return AdminReportDetailResponse.model_validate(report)
+
+
+@router.post("/reports/{report_id}/extract", response_model=AdminReportDetailResponse)
+async def post_admin_report_extract(
+    report_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminReportDetailResponse:
+    try:
+        report = await run_report_extraction(session, report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return AdminReportDetailResponse.model_validate(report)
+
+
+@router.get("/reports/{report_id}/parser-runs", response_model=AdminParserRunsResponse)
+async def get_admin_report_parser_runs(
+    report_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminParserRunsResponse:
+    return AdminParserRunsResponse(report_id=report_id, items=await list_report_parser_runs(session, report_id))
 
 
 @router.get("/reports/{report_id}/candidates", response_model=AdminReportCandidatesResponse)

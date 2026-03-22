@@ -233,7 +233,7 @@ export function AdminReportsDashboard({
                   <tr key={report.id}>
                     <td>{report.companyNameHe}</td>
                     <td>
-                      <a className="inline-link" href={`/admin/reports/${report.id}`}>
+                      <a className="inline-link" href={`/admin/sources/${report.id}`}>
                         {report.reportName ?? "Unnamed report"}
                       </a>
                     </td>

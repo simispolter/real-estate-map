@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AdminProjectEditor } from "@/components/admin/admin-project-editor";
 import { Panel } from "@/components/ui/panel";
-import { getAdminProjectDetail } from "@/lib/api";
+import { getAdminProjectDetail, getCompanies } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ type PageProps = {
 
 export default async function AdminProjectDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const result = await getAdminProjectDetail(id);
+  const [result, companiesResult] = await Promise.all([getAdminProjectDetail(id), getCompanies()]);
 
   if (result.state === "error" || !result.item) {
     notFound();
@@ -22,10 +22,10 @@ export default async function AdminProjectDetailPage({ params }: PageProps) {
     <>
       <Panel
         eyebrow="Admin Detail"
-        title="Manual project correction"
-        description="Use this page to inspect source-backed values, correct classification and location metadata, manage multiple addresses, and write internal notes with an audit trail."
+        title="Canonical project management"
+        description="Edit core project fields directly, manage aliases and addresses, review linked candidates and sources, and create or update snapshots without centering the workflow around reports."
       />
-      <AdminProjectEditor project={result.item} />
+      <AdminProjectEditor companies={companiesResult.items} project={result.item} />
     </>
   );
 }

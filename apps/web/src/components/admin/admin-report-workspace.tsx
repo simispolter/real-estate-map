@@ -5,6 +5,7 @@ import type {
   AdminCandidateDetail,
   AdminCandidateSummary,
   AdminFieldCandidate,
+  AdminParserRun,
   AdminReportDetail,
 } from "@real-estat-map/shared";
 import {
@@ -27,8 +28,10 @@ import {
   createAdminCandidate,
   getAdminCandidateDetail,
   getAdminReportDetail,
+  getAdminReportParserRuns,
   matchAdminCandidate,
   publishAdminCandidate,
+  runAdminReportExtraction,
   updateAdminCandidate,
   updateAdminReport,
 } from "@/lib/api";
@@ -149,7 +152,7 @@ function emptyCandidateCreateState(): CandidateCreateState {
     avg_price_per_sqm_cumulative: "",
     gross_profit_total_expected: "",
     gross_margin_expected_pct: "",
-    location_confidence: "city",
+    location_confidence: "city_only",
     value_origin_type: "manual",
     confidence_level: "medium",
     review_status: "pending",
@@ -240,7 +243,7 @@ function emptyAddressDraft(city = ""): AddressDraft {
     city,
     lat: "",
     lng: "",
-    location_confidence: city ? "city" : "unknown",
+    location_confidence: city ? "city_only" : "unknown",
     is_primary: false,
     value_origin_type: "manual",
     confidence_level: "medium",
@@ -383,7 +386,7 @@ function CandidateQueueItem({
         <button className="secondary-button" onClick={() => onSelect(item.id)} type="button">
           Open in workspace
         </button>
-        <Link className="inline-link" href={`/admin/reports/${reportId}?candidate=${item.id}`}>
+        <Link className="inline-link" href={`/admin/sources/${reportId}?candidate=${item.id}`}>
           Deep link
         </Link>
       </div>
@@ -414,6 +417,8 @@ export function AdminReportWorkspace({
   const [reportFeedback, setReportFeedback] = useState<string | null>(null);
   const [candidateFeedback, setCandidateFeedback] = useState<string | null>(null);
   const [candidateError, setCandidateError] = useState<string | null>(null);
+  const [parserRuns, setParserRuns] = useState<AdminParserRun[]>([]);
+  const [parserFeedback, setParserFeedback] = useState<string | null>(null);
   const [isCandidateLoading, setIsCandidateLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -487,6 +492,15 @@ export function AdminReportWorkspace({
     setReportForm(buildReportForm(nextReport));
   }
 
+  async function refreshParserRuns() {
+    const result = await getAdminReportParserRuns(report.id);
+    if (result.state === "error") {
+      setParserFeedback("Parser run history is temporarily unavailable.");
+      return;
+    }
+    setParserRuns(result.items);
+  }
+
   function syncCandidate(nextCandidate: AdminCandidateDetail) {
     setCandidate(nextCandidate);
     setCandidateForm(buildCandidateForm(nextCandidate));
@@ -514,6 +528,7 @@ export function AdminReportWorkspace({
     const result = await getAdminReportDetail(report.id);
     if (result.item) {
       syncReport(result.item);
+      await refreshParserRuns();
       if (preferredCandidateId) {
         setCandidateQuery(preferredCandidateId);
       } else if (!selectedCandidateId && result.item.candidates[0]?.id) {
@@ -521,6 +536,10 @@ export function AdminReportWorkspace({
       }
     }
   }
+
+  useEffect(() => {
+    void refreshParserRuns();
+  }, [report.id]);
 
   function handleSaveReport() {
     startTransition(async () => {
@@ -566,6 +585,21 @@ export function AdminReportWorkspace({
       setCandidateCreateForm(emptyCandidateCreateState());
       setCandidateFeedback("Staging candidate created.");
       await refreshReport(result.item.id);
+    });
+  }
+
+  function handleRunExtraction() {
+    startTransition(async () => {
+      setParserFeedback(null);
+      const result = await runAdminReportExtraction(report.id);
+      if (!result.item) {
+        setParserFeedback("Could not run automated extraction for this source.");
+        await refreshParserRuns();
+        return;
+      }
+      syncReport(result.item);
+      await refreshParserRuns();
+      setParserFeedback("Automated extraction completed. Review the parser-created candidates before publish.");
     });
   }
 
@@ -754,6 +788,58 @@ export function AdminReportWorkspace({
           <button className="primary-button" disabled={isPending || !reportForm.report_name || !reportForm.period_end_date} onClick={handleSaveReport} type="button">
             Save report metadata
           </button>
+          <button
+            className="secondary-button"
+            disabled={isPending || (!reportForm.source_url && !reportForm.source_file_path)}
+            onClick={handleRunExtraction}
+            type="button"
+          >
+            Run automated extraction
+          </button>
+        </div>
+
+        {parserFeedback ? <p className="muted-copy">{parserFeedback}</p> : null}
+
+        <div className="admin-form-card section-stack">
+          <div>
+            <p className="eyebrow">Parser Runs</p>
+            <h3>Extraction diagnostics</h3>
+            <p className="panel-copy">
+              Automated extraction writes into staging only. Every parser-created candidate still has to move through intake review, matching, and publish.
+            </p>
+          </div>
+
+          {parserRuns.length > 0 ? (
+            <div className="section-stack">
+              {parserRuns.map((run) => (
+                <div className="candidate-suggestion-card" key={run.id}>
+                  <div className="candidate-queue-header">
+                    <div>
+                      <strong>{run.status}</strong>
+                      <p className="panel-copy">
+                        parser {run.parserVersion} | started {formatDate(run.startedAt)} | finished {formatDate(run.finishedAt)}
+                      </p>
+                    </div>
+                    <div className="tag-row">
+                      <span className="tag">{run.sectionsFound} sections</span>
+                      <span className="tag">{run.candidateCount} candidates</span>
+                      <span className="tag">{run.fieldCandidateCount} fields</span>
+                    </div>
+                  </div>
+                  <p className="muted-copy">
+                    {run.sourceReference ?? "No source reference recorded"}
+                  </p>
+                  {run.warnings.length > 0 ? <p className="muted-copy">Warnings: {run.warnings.join(" | ")}</p> : null}
+                  {run.errors.length > 0 ? <p className="muted-copy">Errors: {run.errors.join(" | ")}</p> : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>No parser runs yet.</strong>
+              <p className="panel-copy">Save a valid source URL or file path, then run extraction to generate staging candidates automatically.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1319,9 +1405,22 @@ export function AdminReportWorkspace({
                           <p className="panel-copy">
                             {[suggestion.city, suggestion.neighborhood].filter(Boolean).join(" | ") || "No location detail"}
                           </p>
-                          <p className="panel-copy">similarity {suggestion.similarityScore.toFixed(2)}</p>
+                          <p className="panel-copy">
+                            {suggestion.matchState} | similarity {suggestion.similarityScore.toFixed(2)}
+                          </p>
+                          {Object.keys(suggestion.reasonsJson).length > 0 ? (
+                            <p className="muted-copy">
+                              {Object.entries(suggestion.reasonsJson)
+                                .slice(0, 4)
+                                .map(([key, value]) => `${key}: ${String(value)}`)
+                                .join(" | ")}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="form-actions">
+                          <Link className="inline-link" href={`/admin/projects/${suggestion.projectId}`}>
+                            Open project
+                          </Link>
                           <button className="secondary-button" onClick={() => setCandidateForm((current) => (current ? { ...current, matched_project_id: suggestion.projectId } : current))} type="button">
                             Fill match ID
                           </button>

@@ -22,9 +22,8 @@ export const URBAN_RENEWAL_TYPES = [
 
 export const LOCATION_CONFIDENCE_LEVELS = [
   "exact",
-  "street",
-  "neighborhood",
-  "city",
+  "approximate",
+  "city_only",
   "unknown",
 ] as const;
 
@@ -67,6 +66,7 @@ export const STAGING_PUBLISH_STATUSES = [
   "published",
   "rejected",
 ] as const;
+export const MATCH_SUGGESTION_STATES = ["exact", "likely", "ambiguous", "no_match"] as const;
 
 export type ProjectBusinessType = (typeof PROJECT_BUSINESS_TYPES)[number];
 export type GovernmentProgramType = (typeof GOVERNMENT_PROGRAM_TYPES)[number];
@@ -79,6 +79,7 @@ export type ValueOriginType = (typeof VALUE_ORIGIN_TYPES)[number];
 export type ReportIngestionStatus = (typeof REPORT_INGESTION_STATUSES)[number];
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
 export type StagingPublishStatus = (typeof STAGING_PUBLISH_STATUSES)[number];
+export type MatchSuggestionState = (typeof MATCH_SUGGESTION_STATES)[number];
 
 export interface KpiDefinition {
   id: string;
@@ -140,6 +141,8 @@ export interface ProjectListItem {
   latestSnapshotDate: string | null;
   locationConfidence: LocationConfidence | string;
   locationQuality: string;
+  displayGeometryType: string;
+  addressSummary: string | null;
   sellThroughRate: number | null;
 }
 
@@ -165,16 +168,37 @@ export interface ValueTrust {
 export interface ProjectAddress {
   id: string;
   addressTextRaw: string | null;
+  normalizedAddressText: string | null;
   city: string | null;
+  normalizedCity: string | null;
   street: string | null;
+  normalizedStreet: string | null;
   houseNumberFrom: number | null;
   houseNumberTo: number | null;
   lat: number | null;
   lng: number | null;
   locationConfidence: string;
   locationQuality: string;
+  geometrySource: string;
+  geocodingStatus: string;
+  geocodingProvider: string | null;
+  geocodingNote: string | null;
   isPrimary: boolean;
   valueOriginType: ValueOriginType | string;
+}
+
+export interface ProjectDisplayGeometry {
+  geometryType: string;
+  geometrySource: string;
+  locationConfidence: string;
+  locationQuality: string;
+  geometryGeojson: Record<string, unknown> | null;
+  centerLat: number | null;
+  centerLng: number | null;
+  addressSummary: string | null;
+  note: string | null;
+  cityOnly: boolean;
+  hasCoordinates: boolean;
 }
 
 export interface FieldProvenance {
@@ -211,8 +235,10 @@ export interface ProjectDetail {
     district: string | null;
     locationConfidence: string;
     locationQuality: string;
+    addressSummary: string | null;
     trust: Record<string, ValueTrust>;
   };
+  displayGeometry: ProjectDisplayGeometry;
   latestSnapshot: {
     snapshotId: string;
     snapshotDate: string;
@@ -301,7 +327,7 @@ export interface CompanyDetail {
 
 export interface MapFeatureItem {
   type: "Feature";
-  geometry: { type: string; coordinates: number[] } | null;
+  geometry: Record<string, unknown> | null;
   properties: {
     projectId: string;
     canonicalName: string;
@@ -311,8 +337,13 @@ export interface MapFeatureItem {
     projectStatus: string | null;
     avgPricePerSqmCumulative: number | null;
     unsoldUnits: number | null;
+    geometryType: string;
+    geometrySource: string;
     locationConfidence: string;
     locationQuality: string;
+    addressSummary: string | null;
+    cityOnly: boolean;
+    hasCoordinates: boolean;
   };
 }
 
@@ -322,6 +353,49 @@ export interface MapProjectsResponse {
     availableProjects: number;
     projectsWithCoordinates: number;
     locationQualityBreakdown: Record<string, number>;
+    geometryTypeBreakdown: Record<string, number>;
+    cityOnlyProjects: number;
+  };
+}
+
+export interface ExternalLayerSummary {
+  id: string;
+  layerName: string;
+  sourceName: string;
+  sourceUrl: string | null;
+  geometryType: string;
+  updateCadence: string;
+  qualityScore: number | null;
+  visibility: string;
+  notes: string | null;
+  isActive: boolean;
+  defaultOnMap: boolean;
+  recordCount: number;
+}
+
+export interface ExternalLayerFeatureItem {
+  type: "Feature";
+  geometry: Record<string, unknown> | null;
+  properties: {
+    layerId: string;
+    layerName: string;
+    sourceName: string;
+    externalRecordId: string;
+    label: string | null;
+    city: string | null;
+    effectiveDate: string | null;
+    qualityScore: number | null;
+    propertiesJson: Record<string, unknown>;
+    relationCount: number;
+  };
+}
+
+export interface MapExternalLayersResponse {
+  features: ExternalLayerFeatureItem[];
+  meta: {
+    selectedLayers: number;
+    selectedRecords: number;
+    layerBreakdown: Record<string, number>;
   };
 }
 
@@ -341,11 +415,70 @@ export interface AdminProjectListItem {
   company: ProjectCompanySummary;
   city: string | null;
   projectBusinessType: string;
+  governmentProgramType: string;
+  projectUrbanRenewalType: string;
+  projectStatus: string | null;
   permitStatus: string | null;
   classificationConfidence: string;
   locationConfidence: string;
   needsAdminReview: boolean;
   latestSnapshotDate: string | null;
+  sourceCount: number;
+  addressCount: number;
+  isPubliclyVisible: boolean;
+  sourceConflictFlag: boolean;
+}
+
+export interface AdminProjectAliasItem {
+  id: string;
+  aliasName: string;
+  valueOriginType: ValueOriginType | string;
+  aliasSourceType: string;
+  sourceReportId: string | null;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminProjectSourceItem {
+  reportId: string;
+  reportName: string | null;
+  sourceLabel: string | null;
+  sourceUrl: string | null;
+  ingestionStatus: string;
+  periodEndDate: string;
+  publishedAt: string | null;
+}
+
+export interface AdminProjectLinkedCandidateItem {
+  candidateId: string;
+  candidateProjectName: string;
+  matchingStatus: string;
+  publishStatus: string;
+  reviewStatus: string;
+  sourceReportId: string;
+  sourceReportName: string | null;
+}
+
+export interface AdminSnapshotSummary {
+  id: string;
+  reportId: string;
+  reportName: string | null;
+  snapshotDate: string;
+  projectStatus: string | null;
+  permitStatus: string | null;
+  totalUnits: number | null;
+  marketedUnits: number | null;
+  soldUnitsCumulative: number | null;
+  unsoldUnits: number | null;
+  avgPricePerSqmCumulative: number | null;
+  grossProfitTotalExpected: number | null;
+  grossMarginExpectedPct: number | null;
+  chronologyStatus: string;
+  chronologyNotes: string | null;
+  notesInternal: string | null;
+  diffSummary: Record<string, { before: string | null; after: string | null; changed: boolean | null }>;
 }
 
 export interface AdminProjectDetail {
@@ -354,11 +487,34 @@ export interface AdminProjectDetail {
   company: ProjectCompanySummary;
   classification: ProjectDetail["classification"];
   location: ProjectDetail["location"];
-  latestSnapshot: ProjectDetail["latestSnapshot"];
+  displayGeometry: ProjectDisplayGeometry;
+  latestSnapshot: ProjectDetail["latestSnapshot"] | null;
   addresses: ProjectAddress[];
+  aliases: AdminProjectAliasItem[];
+  snapshots: AdminSnapshotSummary[];
+  linkedSources: AdminProjectSourceItem[];
+  linkedCandidates: AdminProjectLinkedCandidateItem[];
   fieldProvenance: FieldProvenance[];
+  provenanceSummary: Record<string, number>;
+  isPubliclyVisible: boolean;
+  sourceConflictFlag: boolean;
   notesInternal: string | null;
   auditLog: AdminAuditLogItem[];
+}
+
+export interface AdminIntakeListItem {
+  id: string;
+  candidateProjectName: string;
+  company: ProjectCompanySummary;
+  city: string | null;
+  sourceReportId: string;
+  sourceReportName: string | null;
+  matchingStatus: string;
+  confidenceLevel: string;
+  reviewStatus: string;
+  publishStatus: string;
+  matchedProjectId: string | null;
+  matchedProjectName: string | null;
 }
 
 export interface AdminReportSummary {
@@ -455,6 +611,139 @@ export interface MatchSuggestion {
   city: string | null;
   neighborhood: string | null;
   similarityScore: number;
+  matchState: MatchSuggestionState | string;
+  reasonsJson: Record<string, unknown>;
+}
+
+export interface AdminDuplicateSuggestion {
+  id: string;
+  projectId: string;
+  projectName: string;
+  duplicateProjectId: string;
+  duplicateProjectName: string;
+  companyName: string;
+  city: string | null;
+  duplicateCity: string | null;
+  matchState: MatchSuggestionState | string;
+  score: number;
+  reasonsJson: Record<string, unknown>;
+  reviewStatus: string;
+}
+
+export interface AdminCoverageCompany {
+  companyId: string;
+  companyNameHe: string;
+  isInScope: boolean;
+  outOfScopeReason: string | null;
+  coveragePriority: string;
+  latestReportIngestedId: string | null;
+  latestReportName: string | null;
+  historicalCoverageStatus: string;
+  reportsRegistered: number;
+  projectsCreated: number;
+  snapshotsCreated: number;
+  notes: string | null;
+}
+
+export interface AdminCoverageDashboard {
+  summary: {
+    companiesInScope: number;
+    reportsRegistered: number;
+    projectsCreated: number;
+    snapshotsCreated: number;
+    unmatchedCandidates: number;
+    ambiguousCandidates: number;
+    projectsMissingKeyFields: number;
+    projectsMissingPreciseLocation: number;
+  };
+  companies: AdminCoverageCompany[];
+}
+
+export interface AdminParserRun {
+  id: string;
+  reportId: string;
+  stagingReportId: string | null;
+  status: string;
+  parserVersion: string;
+  sourceLabel: string | null;
+  sourceReference: string | null;
+  sourceChecksum: string | null;
+  sectionsFound: number;
+  candidateCount: number;
+  fieldCandidateCount: number;
+  addressCandidateCount: number;
+  warnings: string[];
+  errors: string[];
+  diagnostics: Record<string, unknown>;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminAnomalyItem {
+  id: string;
+  anomalyType: string;
+  severity: string;
+  projectId: string;
+  projectName: string;
+  companyName: string;
+  snapshotId: string | null;
+  reportId: string | null;
+  sourceReportName: string | null;
+  summary: string;
+  detailsJson: Record<string, unknown>;
+}
+
+export interface AdminOpsDashboard {
+  summary: {
+    reportsRegistered: number;
+    projectsCreated: number;
+    snapshotsCreated: number;
+    openAnomalies: number;
+    parserFailedRuns: number;
+    readyToPublish: number;
+  };
+  ingestionHealth: Record<string, unknown>;
+  matchingBacklog: Record<string, number>;
+  publishBacklog: Record<string, number>;
+  coverageCompleteness: Record<string, number>;
+  locationCompleteness: Record<string, unknown>;
+  parserHealth: Record<string, unknown>;
+  topAnomalies: AdminAnomalyItem[];
+}
+
+export interface AdminExternalLayerListItem {
+  id: string;
+  layerName: string;
+  sourceName: string;
+  sourceUrl: string | null;
+  geometryType: string;
+  updateCadence: string;
+  qualityScore: number | null;
+  visibility: string;
+  notes: string | null;
+  isActive: boolean;
+  defaultOnMap: boolean;
+  recordCount: number;
+  relationCount: number;
+  updatedAt: string;
+}
+
+export interface AdminExternalLayerRecordItem {
+  id: string;
+  externalRecordId: string;
+  label: string | null;
+  city: string | null;
+  effectiveDate: string | null;
+  propertiesJson: Record<string, unknown>;
+  updateMetadata: Record<string, unknown> | null;
+  relationCount: number;
+}
+
+export interface AdminExternalLayerDetail extends AdminExternalLayerListItem {
+  records: AdminExternalLayerRecordItem[];
+  relationMethodBreakdown: Record<string, number>;
 }
 
 export interface AdminCandidateDetail {

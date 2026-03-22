@@ -52,6 +52,7 @@ export function ProjectTable({
                   <td>
                     <div className="stacked-cell">
                       <span>{row.projectBusinessType}</span>
+                      <span className="muted-copy">{row.addressSummary ?? row.displayGeometryType}</span>
                       <Tag tone={row.locationQuality === "exact" ? "accent" : row.locationQuality === "unknown" ? "warning" : "default"}>
                         {row.locationQuality}
                       </Tag>

@@ -3,16 +3,18 @@ import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { ProjectMapPanel } from "@/components/dashboard/project-map-panel";
 import { ProjectTable } from "@/components/dashboard/project-table";
 import { Tag } from "@/components/ui/tag";
-import { getFiltersMetadata, getHomeKpis, getMapProjects, getProjects } from "@/lib/api";
+import { getFiltersMetadata, getHomeKpis, getMapExternalLayers, getMapLayers, getMapProjects, getProjects } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [kpis, filters, projects, mapResults] = await Promise.all([
+  const [kpis, filters, projects, mapResults, mapLayers, mapExternalLayers] = await Promise.all([
     getHomeKpis(),
     getFiltersMetadata(),
     getProjects({ page_size: "6" }),
     getMapProjects({}),
+    getMapLayers(),
+    getMapExternalLayers([], {}),
   ]);
   const filterFields = [
     {
@@ -78,7 +80,13 @@ export default async function HomePage() {
 
       <section className="two-column-grid">
         <ProjectTable rows={projects.items} title="Latest public projects" />
-        <ProjectMapPanel state={mapResults.state} mapData={mapResults.item} />
+        <ProjectMapPanel
+          selectedLayerIds={[]}
+          state={mapResults.state}
+          mapData={mapResults.item}
+          layers={mapLayers.items}
+          externalLayers={mapExternalLayers.item}
+        />
       </section>
     </>
   );

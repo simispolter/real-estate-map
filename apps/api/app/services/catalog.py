@@ -11,6 +11,8 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Company, FieldProvenance, ProjectAddress, ProjectMaster, ProjectSnapshot, Report
+from app.services.spatial import location_quality as spatial_location_quality
+from app.services.spatial import resolved_display_geometry
 
 
 ZERO = Decimal("0")
@@ -75,13 +77,7 @@ def _confidence_level(score: Decimal | None) -> str:
 
 
 def _location_quality(location_confidence: str | None) -> str:
-    if location_confidence == "exact":
-        return "exact"
-    if location_confidence in {"street", "neighborhood"}:
-        return "approximate"
-    if location_confidence == "city":
-        return "city-only"
-    return "unknown"
+    return spatial_location_quality(location_confidence)
 
 
 def _safe_rate(numerator: int | None, denominator: int | None) -> Decimal | None:
@@ -149,6 +145,8 @@ def _serialize_project_row(row: dict) -> dict:
         "latest_snapshot_date": row["snapshot_date"],
         "location_confidence": row["location_confidence"],
         "location_quality": _location_quality(row["location_confidence"]),
+        "display_geometry_type": row["display_geometry_type"],
+        "address_summary": row["display_address_summary"],
         "sell_through_rate": _safe_rate(row["sold_units_cumulative"], row["marketed_units"]),
     }
 
@@ -168,6 +166,8 @@ async def list_projects(
             ProjectMaster.government_program_type,
             ProjectMaster.project_urban_renewal_type,
             ProjectMaster.location_confidence,
+            ProjectMaster.display_geometry_type,
+            ProjectMaster.display_address_summary,
             Company.id.label("company_id"),
             Company.name_he.label("company_name_he"),
             latest_snapshot.c.project_status,
@@ -237,6 +237,14 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 ProjectMaster.project_urban_renewal_type,
                 ProjectMaster.classification_confidence,
                 ProjectMaster.location_confidence,
+                ProjectMaster.display_geometry_type,
+                ProjectMaster.display_geometry_source,
+                ProjectMaster.display_geometry_confidence,
+                ProjectMaster.display_geometry_geojson,
+                ProjectMaster.display_center_lat,
+                ProjectMaster.display_center_lng,
+                ProjectMaster.display_address_summary,
+                ProjectMaster.display_geometry_note,
                 Company.id.label("company_id"),
                 Company.name_he.label("company_name_he"),
                 latest_snapshot.c.snapshot_id,
@@ -268,6 +276,9 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
     if detail is None:
         return None
 
+    project_record = (
+        await session.execute(select(ProjectMaster).where(ProjectMaster.id == project_id))
+    ).scalar_one()
     addresses = (
         await session.execute(
             select(ProjectAddress)
@@ -293,6 +304,8 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
 
     pages = sorted({row.source_page for row in provenance if row.source_page is not None})
     missing_fields = sorted({row.field_name for row in provenance if row.value_origin_type == "unknown"})
+
+    display_geometry = resolved_display_geometry(project_record)
 
     return {
         "identity": {
@@ -324,8 +337,10 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
             "district": detail["district"],
             "location_confidence": detail["location_confidence"],
             "location_quality": _location_quality(detail["location_confidence"]),
+            "address_summary": display_geometry["address_summary"],
             "trust": _trust_map(provenance, ["city", "neighborhood", "district", "location_confidence"]),
         },
+        "display_geometry": display_geometry,
         "latest_snapshot": {
             "snapshot_id": detail["snapshot_id"],
             "snapshot_date": detail["snapshot_date"],
@@ -361,14 +376,21 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
             {
                 "id": address.id,
                 "address_text_raw": address.address_text_raw,
+                "normalized_address_text": address.normalized_address_text,
                 "city": address.city,
+                "normalized_city": address.normalized_city,
                 "street": address.street,
+                "normalized_street": address.normalized_street,
                 "house_number_from": address.house_number_from,
                 "house_number_to": address.house_number_to,
                 "lat": address.lat,
                 "lng": address.lng,
                 "location_confidence": address.location_confidence,
                 "location_quality": _location_quality(address.location_confidence),
+                "geometry_source": address.geometry_source,
+                "geocoding_status": address.geocoding_status,
+                "geocoding_provider": address.geocoding_provider,
+                "geocoding_note": address.geocoding_note,
                 "is_primary": address.is_primary,
                 "value_origin_type": address_provenance_lookup[address.id].value_origin_type
                 if address.id in address_provenance_lookup
@@ -533,7 +555,7 @@ async def get_company_detail(session: AsyncSession, company_id: UUID) -> dict | 
     business_counter = Counter(row["project_business_type"] for row in projects)
     avg_prices = [row["avg_price_per_sqm_cumulative"] for row in projects if row["avg_price_per_sqm_cumulative"] is not None]
     known_unsold_units = sum(row["unsold_units"] or 0 for row in projects)
-    precise_locations = sum(1 for row in projects if row["location_confidence"] in {"exact", "street"})
+    precise_locations = sum(1 for row in projects if row["location_confidence"] in {"exact", "approximate"})
 
     return {
         "id": company.id,
@@ -639,23 +661,94 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
 
 
 async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -> dict:
-    items, _ = await list_projects(session, replace(filters, page=1, page_size=500))
+    latest_snapshot = _latest_snapshot_subquery()
+    rows = (
+        await session.execute(
+            select(
+                ProjectMaster,
+                Company,
+                latest_snapshot.c.project_status.label("snapshot_project_status"),
+                latest_snapshot.c.permit_status.label("snapshot_permit_status"),
+                latest_snapshot.c.total_units.label("snapshot_total_units"),
+                latest_snapshot.c.marketed_units.label("snapshot_marketed_units"),
+                latest_snapshot.c.sold_units_cumulative.label("snapshot_sold_units_cumulative"),
+                latest_snapshot.c.unsold_units.label("snapshot_unsold_units"),
+                latest_snapshot.c.avg_price_per_sqm_cumulative.label("snapshot_avg_price_per_sqm_cumulative"),
+                latest_snapshot.c.gross_profit_total_expected.label("snapshot_gross_profit_total_expected"),
+                latest_snapshot.c.gross_margin_expected_pct.label("snapshot_gross_margin_expected_pct"),
+                latest_snapshot.c.snapshot_date.label("snapshot_date"),
+            )
+            .join(Company, Company.id == ProjectMaster.company_id)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(ProjectMaster.is_publicly_visible.is_(True))
+        )
+    ).all()
+    items = []
+    for row_item in rows:
+        project = row_item[0]
+        company = row_item[1]
+        row = {
+            "project_id": project.id,
+            "canonical_name": project.canonical_name,
+            "company_id": company.id,
+            "company_name_he": company.name_he,
+            "city": project.city,
+            "neighborhood": project.neighborhood,
+            "project_business_type": project.project_business_type,
+            "government_program_type": project.government_program_type,
+            "project_urban_renewal_type": project.project_urban_renewal_type,
+            "project_status": row_item.snapshot_project_status,
+            "permit_status": row_item.snapshot_permit_status,
+            "total_units": row_item.snapshot_total_units,
+            "marketed_units": row_item.snapshot_marketed_units,
+            "sold_units_cumulative": row_item.snapshot_sold_units_cumulative,
+            "unsold_units": row_item.snapshot_unsold_units,
+            "avg_price_per_sqm_cumulative": row_item.snapshot_avg_price_per_sqm_cumulative,
+            "gross_profit_total_expected": row_item.snapshot_gross_profit_total_expected,
+            "gross_margin_expected_pct": row_item.snapshot_gross_margin_expected_pct,
+            "snapshot_date": row_item.snapshot_date,
+            "location_confidence": project.location_confidence,
+            "display_geometry_type": project.display_geometry_type,
+            "display_address_summary": project.display_address_summary,
+            "project": project,
+        }
+        serialized = _serialize_project_row(row)
+        items.append(serialized | {"project": project})
+
+    if filters.city:
+        items = [item for item in items if item["city"] == filters.city]
+    if filters.company_id:
+        items = [item for item in items if item["company"]["id"] == filters.company_id]
+    if filters.project_business_type:
+        items = [item for item in items if item["project_business_type"] == filters.project_business_type]
+    if filters.government_program_type:
+        items = [item for item in items if item["government_program_type"] == filters.government_program_type]
+    if filters.project_urban_renewal_type:
+        items = [item for item in items if item["project_urban_renewal_type"] == filters.project_urban_renewal_type]
+    if filters.permit_status:
+        items = [item for item in items if item["permit_status"] == filters.permit_status]
+    if filters.q:
+        term = filters.q.strip().lower()
+        items = [
+            item
+            for item in items
+            if term in " ".join(
+                [
+                    item["canonical_name"].lower(),
+                    (item["city"] or "").lower(),
+                    item["company"]["name_he"].lower(),
+                    (item["address_summary"] or "").lower(),
+                ]
+            )
+        ]
+
     features = []
     for item in items:
-        address = (
-            await session.execute(
-                select(ProjectAddress)
-                .where(ProjectAddress.project_id == item["project_id"])
-                .order_by(ProjectAddress.is_primary.desc(), ProjectAddress.created_at.asc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        geometry = None
-        if address and address.lat is not None and address.lng is not None:
-            geometry = {
-                "type": "Point",
-                "coordinates": [float(address.lng), float(address.lat)],
-            }
+        display_geometry = resolved_display_geometry(item["project"])
+        geometry = display_geometry["geometry_geojson"]
 
         features.append(
             {
@@ -670,19 +763,27 @@ async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -
                     "project_status": item["project_status"],
                     "avg_price_per_sqm_cumulative": item["avg_price_per_sqm_cumulative"],
                     "unsold_units": item["unsold_units"],
-                    "location_confidence": item["location_confidence"],
-                    "location_quality": item["location_quality"],
+                    "geometry_type": display_geometry["geometry_type"],
+                    "geometry_source": display_geometry["geometry_source"],
+                    "location_confidence": display_geometry["location_confidence"],
+                    "location_quality": display_geometry["location_quality"],
+                    "address_summary": display_geometry["address_summary"],
+                    "city_only": display_geometry["city_only"],
+                    "has_coordinates": display_geometry["has_coordinates"],
                 },
             }
         )
 
     quality_counts = Counter(feature["properties"]["location_quality"] for feature in features)
+    geometry_type_counts = Counter(feature["properties"]["geometry_type"] for feature in features)
     return {
         "features": features,
         "meta": {
             "available_projects": len(features),
-            "projects_with_coordinates": quality_counts.get("exact", 0) + quality_counts.get("approximate", 0),
+            "projects_with_coordinates": sum(1 for feature in features if feature["properties"]["has_coordinates"]),
             "location_quality_breakdown": dict(quality_counts),
+            "geometry_type_breakdown": dict(geometry_type_counts),
+            "city_only_projects": sum(1 for feature in features if feature["properties"]["city_only"]),
         },
     }
 

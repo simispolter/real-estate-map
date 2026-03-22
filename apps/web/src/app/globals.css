@@ -554,6 +554,88 @@ p {
   gap: 18px;
 }
 
+.map-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  gap: 18px;
+}
+
+.map-layer-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.map-layer-toggle {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.86);
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.map-layer-toggle-active {
+  border-color: rgba(15, 108, 123, 0.28);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.map-canvas-card,
+.map-selection-card,
+.map-result-card {
+  padding: 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.map-legend,
+.map-results-list,
+.map-meta-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.map-legend,
+.map-meta-grid {
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  overflow-x: auto;
+}
+
+.map-surface-svg {
+  width: 100%;
+  height: auto;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 108, 123, 0.16);
+  background: linear-gradient(180deg, rgba(242, 247, 248, 0.92), rgba(228, 238, 240, 0.96));
+}
+
+.map-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(15, 108, 123, 0.08);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.map-results-list {
+  margin-top: 18px;
+}
+
+.map-result-card {
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-result-card-active {
+  border-color: rgba(15, 108, 123, 0.34);
+  box-shadow: 0 0 0 2px rgba(15, 108, 123, 0.08);
+}
+
 .map-grid {
   min-height: 320px;
   border-radius: 26px;
@@ -623,6 +705,7 @@ p {
   .filter-grid,
   .company-grid,
   .admin-grid,
+  .map-panel-grid,
   .report-workspace-grid,
   .detail-grid,
   .detail-list,

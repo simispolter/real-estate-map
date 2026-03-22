@@ -102,6 +102,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
               <strong>Location confidence</strong>
               <p className="panel-copy">{project.location.locationConfidence}</p>
             </div>
+            <div>
+              <strong>Address summary</strong>
+              <p className="panel-copy">{project.location.addressSummary ?? "City-level only"}</p>
+            </div>
           </div>
         </Panel>
 
@@ -148,6 +152,34 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       </section>
 
       <section className="detail-grid">
+        <Panel eyebrow="Spatial" title="Location model">
+          <div className="detail-list">
+            <div>
+              <strong>Display geometry</strong>
+              <p className="panel-copy">{project.displayGeometry.geometryType}</p>
+            </div>
+            <div>
+              <strong>Geometry source</strong>
+              <p className="panel-copy">{project.displayGeometry.geometrySource}</p>
+            </div>
+            <div>
+              <strong>Location quality</strong>
+              <p className="panel-copy">{project.displayGeometry.locationQuality}</p>
+            </div>
+            <div>
+              <strong>Map center</strong>
+              <p className="panel-copy">
+                {project.displayGeometry.centerLat !== null && project.displayGeometry.centerLng !== null
+                  ? `${project.displayGeometry.centerLat}, ${project.displayGeometry.centerLng}`
+                  : "No coordinates"}
+              </p>
+            </div>
+          </div>
+          {project.displayGeometry.note ? (
+            <p className="panel-copy">Note: {project.displayGeometry.note}</p>
+          ) : null}
+        </Panel>
+
         <Panel eyebrow="Addresses" title="Project addresses">
           {project.addresses.length > 0 ? (
             <div className="address-list">
@@ -157,11 +189,15 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                   <p className="panel-copy">
                     {address.isPrimary ? "Primary address" : "Additional address"} | {address.locationQuality}
                   </p>
+                  <p className="panel-copy">Normalized: {address.normalizedAddressText ?? "Not normalized yet"}</p>
                   <p className="panel-copy">
                     Coordinates:{" "}
                     {address.lat !== null && address.lng !== null
                       ? `${address.lat}, ${address.lng}`
                       : "City-level only"}
+                  </p>
+                  <p className="panel-copy">
+                    Geocoding: {[address.geocodingStatus, address.geometrySource].join(" | ")}
                   </p>
                 </div>
               ))}

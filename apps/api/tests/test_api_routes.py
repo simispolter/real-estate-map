@@ -50,14 +50,28 @@ def project_detail_payload() -> dict:
             "city": "Tel Aviv",
             "neighborhood": None,
             "district": None,
-            "location_confidence": "city",
+            "location_confidence": "city_only",
             "location_quality": "city-only",
+            "address_summary": "Tel Aviv (city-level)",
             "trust": {
                 "city": {
                     "value_origin_type": "reported",
                     "confidence_level": "high",
                 }
             },
+        },
+        "display_geometry": {
+            "geometry_type": "city_centroid",
+            "geometry_source": "city_registry",
+            "location_confidence": "city_only",
+            "location_quality": "city-only",
+            "geometry_geojson": {"type": "Point", "coordinates": [34.7818, 32.0853]},
+            "center_lat": "32.0853",
+            "center_lng": "34.7818",
+            "address_summary": "Tel Aviv (city-level)",
+            "note": "Centroid fallback",
+            "city_only": True,
+            "has_coordinates": True,
         },
         "latest_snapshot": {
             "snapshot_id": str(uuid4()),
@@ -94,8 +108,15 @@ def project_detail_payload() -> dict:
                 "house_number_to": 10,
                 "lat": "32.1000000",
                 "lng": "34.8000000",
-                "location_confidence": "street",
+                "location_confidence": "approximate",
                 "location_quality": "approximate",
+                "normalized_address_text": "Main Street 10, Tel Aviv",
+                "normalized_city": "Tel Aviv",
+                "normalized_street": "Main Street",
+                "geometry_source": "reported",
+                "geocoding_status": "geocoded",
+                "geocoding_provider": "manual",
+                "geocoding_note": None,
                 "is_primary": True,
                 "value_origin_type": "reported",
             }
@@ -150,8 +171,10 @@ def test_projects_list_route(monkeypatch):
                     "gross_profit_total_expected": None,
                     "gross_margin_expected_pct": None,
                     "latest_snapshot_date": "2025-09-30",
-                    "location_confidence": "city",
+                    "location_confidence": "city_only",
                     "location_quality": "city-only",
+                    "display_geometry_type": "city_centroid",
+                    "address_summary": "Tel Aviv (city-level)",
                     "sell_through_rate": "75.00",
                 }
             ],
@@ -257,8 +280,13 @@ def test_map_projects_route(monkeypatch):
                         "project_status": "marketing",
                         "avg_price_per_sqm_cumulative": "32000.00",
                         "unsold_units": 20,
-                        "location_confidence": "street",
+                        "location_confidence": "approximate",
                         "location_quality": "approximate",
+                        "geometry_type": "approximate_point",
+                        "geometry_source": "reported",
+                        "address_summary": "Main Street 10, Tel Aviv",
+                        "city_only": False,
+                        "has_coordinates": True,
                     },
                 }
             ],
@@ -266,6 +294,8 @@ def test_map_projects_route(monkeypatch):
                 "available_projects": 1,
                 "projects_with_coordinates": 1,
                 "location_quality_breakdown": {"approximate": 1},
+                "geometry_type_breakdown": {"approximate_point": 1},
+                "city_only_projects": 0,
             },
         }
 
@@ -281,6 +311,72 @@ def test_map_projects_route(monkeypatch):
     assert response.json()["meta"]["projects_with_coordinates"] == 1
 
 
+def test_map_layers_route(monkeypatch):
+    async def fake_list_public_external_layers(_session):
+        return [
+            {
+                "id": str(uuid4()),
+                "layer_name": "Municipal centroids demo layer",
+                "source_name": "Government open data demo slice",
+                "source_url": "https://info.data.gov.il/datagov/home",
+                "geometry_type": "point",
+                "update_cadence": "monthly",
+                "quality_score": "68.00",
+                "visibility": "public",
+                "notes": "Demo layer",
+                "is_active": True,
+                "default_on_map": False,
+                "record_count": 5,
+            }
+        ]
+
+    monkeypatch.setattr(map_endpoints, "list_public_external_layers", fake_list_public_external_layers)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/map/layers")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["layer_name"] == "Municipal centroids demo layer"
+
+
+def test_admin_layers_route(monkeypatch):
+    async def fake_list_admin_external_layers(_session):
+        return [
+            {
+                "id": str(uuid4()),
+                "layer_name": "Municipal centroids demo layer",
+                "source_name": "Government open data demo slice",
+                "source_url": "https://info.data.gov.il/datagov/home",
+                "geometry_type": "point",
+                "update_cadence": "monthly",
+                "quality_score": "68.00",
+                "visibility": "public",
+                "notes": "Demo layer",
+                "is_active": True,
+                "default_on_map": False,
+                "record_count": 5,
+                "relation_count": 0,
+                "updated_at": "2026-03-22T10:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(admin_endpoints, "list_admin_external_layers", fake_list_admin_external_layers)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/layers")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["record_count"] == 5
+
+
 def test_admin_update_flow(monkeypatch):
     seen_payload = {}
 
@@ -294,6 +390,7 @@ def test_admin_update_flow(monkeypatch):
             "company": {"id": COMPANY_ID, "name_he": "Test Company"},
             "classification": project["classification"],
             "location": project["location"],
+            "display_geometry": project["display_geometry"],
             "latest_snapshot": project["latest_snapshot"],
             "addresses": project["addresses"],
             "field_provenance": project["field_provenance"],
@@ -331,3 +428,145 @@ def test_admin_update_flow(monkeypatch):
     assert seen_payload["project_business_type"] == "urban_renewal"
     assert payload["classification"]["project_business_type"] == "urban_renewal"
     assert payload["audit_log"][0]["comment"] == "Manual reclassification"
+
+
+def test_admin_duplicates_route(monkeypatch):
+    async def fake_list_admin_duplicates(_session):
+        return [
+            {
+                "id": str(uuid4()),
+                "project_id": PROJECT_ID,
+                "project_name": "Test Project A",
+                "duplicate_project_id": str(uuid4()),
+                "duplicate_project_name": "Test Project B",
+                "company_name": "Test Company",
+                "city": "Tel Aviv",
+                "duplicate_city": "Tel Aviv",
+                "match_state": "likely",
+                "score": "87.50",
+                "reasons_json": {"name_score": 0.91, "city_match": True},
+                "review_status": "open",
+            }
+        ]
+
+    monkeypatch.setattr(admin_endpoints, "list_admin_duplicates", fake_list_admin_duplicates)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/duplicates")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["match_state"] == "likely"
+    assert payload["items"][0]["company_name"] == "Test Company"
+
+
+def test_admin_coverage_route(monkeypatch):
+    async def fake_get_admin_coverage_dashboard(_session):
+        return {
+            "summary": {
+                "companies_in_scope": 5,
+                "reports_registered": 7,
+                "projects_created": 18,
+                "snapshots_created": 24,
+                "unmatched_candidates": 2,
+                "ambiguous_candidates": 1,
+                "projects_missing_key_fields": 3,
+                "projects_missing_precise_location": 11,
+            },
+            "companies": [
+                {
+                    "company_id": COMPANY_ID,
+                    "company_name_he": "Test Company",
+                    "is_in_scope": True,
+                    "out_of_scope_reason": None,
+                    "coverage_priority": "high",
+                    "latest_report_ingested_id": None,
+                    "latest_report_name": "Q3 2025",
+                    "historical_coverage_status": "partial",
+                    "reports_registered": 2,
+                    "projects_created": 3,
+                    "snapshots_created": 4,
+                    "notes": "Backfill in progress",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(admin_endpoints, "get_admin_coverage_dashboard", fake_get_admin_coverage_dashboard)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/coverage")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["companies_in_scope"] == 5
+    assert payload["companies"][0]["coverage_priority"] == "high"
+
+
+def test_admin_anomalies_route(monkeypatch):
+    async def fake_list_admin_anomalies(_session):
+        return [
+            {
+                "id": "sold_gt_marketed:test",
+                "anomaly_type": "sold_gt_marketed",
+                "severity": "high",
+                "project_id": PROJECT_ID,
+                "project_name": "Test Project",
+                "company_name": "Test Company",
+                "snapshot_id": None,
+                "report_id": None,
+                "source_report_name": None,
+                "summary": "Sold units exceed marketed units.",
+                "details_json": {"sold_units_cumulative": 10, "marketed_units": 8},
+            }
+        ]
+
+    monkeypatch.setattr(admin_endpoints, "list_admin_anomalies", fake_list_admin_anomalies)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/anomalies")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["severity"] == "high"
+
+
+def test_admin_ops_route(monkeypatch):
+    async def fake_get_admin_ops_dashboard(_session):
+        return {
+            "summary": {
+                "reports_registered": 7,
+                "projects_created": 18,
+                "snapshots_created": 24,
+                "open_anomalies": 3,
+                "parser_failed_runs": 1,
+                "ready_to_publish": 2,
+            },
+            "ingestion_health": {"by_status": {"in_review": 2}},
+            "matching_backlog": {"unmatched": 2},
+            "publish_backlog": {"ready_to_publish": 2},
+            "coverage_completeness": {"companies_in_scope": 5},
+            "location_completeness": {"breakdown": {"city_only": 4}},
+            "parser_health": {"total_runs": 5, "failed_runs": 1, "recent_runs": []},
+            "top_anomalies": [],
+        }
+
+    monkeypatch.setattr(admin_endpoints, "get_admin_ops_dashboard", fake_get_admin_ops_dashboard)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/ops")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["parser_failed_runs"] == 1

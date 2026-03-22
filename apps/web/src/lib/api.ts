@@ -2,19 +2,34 @@ import type {
   AdminAddressCandidate,
   AdminCandidateDetail,
   AdminCandidateSummary,
+  AdminAnomalyItem,
+  AdminCoverageDashboard,
+  AdminCoverageCompany,
+  AdminDuplicateSuggestion,
+  AdminExternalLayerDetail,
+  AdminExternalLayerListItem,
   AdminFieldCandidate,
+  AdminIntakeListItem,
+  AdminOpsDashboard,
+  AdminParserRun,
+  AdminProjectAliasItem,
   AdminProjectDetail,
   AdminProjectListItem,
+  AdminProjectLinkedCandidateItem,
+  AdminProjectSourceItem,
   AdminReportDetail,
   AdminReportSummary,
+  AdminSnapshotSummary,
   CandidateCompareRow,
   CandidateDiffItem,
   CompanyDetail,
   CompanyListItem,
+  ExternalLayerSummary,
   FieldProvenance,
   FiltersMetadata,
   KpiDefinition,
   MatchSuggestion,
+  MapExternalLayersResponse,
   MapProjectsResponse,
   ProjectAddress,
   ProjectDetail,
@@ -128,6 +143,8 @@ function mapProjectListItem(item: Record<string, unknown>, index: number): Proje
     latestSnapshotDate: stringOrNull(item.latest_snapshot_date),
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
     locationQuality: stringOrNull(item.location_quality) ?? "unknown",
+    displayGeometryType: stringOrNull(item.display_geometry_type) ?? "unknown",
+    addressSummary: stringOrNull(item.address_summary),
     sellThroughRate: numberOrNull(item.sell_through_rate),
   };
 }
@@ -151,16 +168,139 @@ function mapAddress(item: Record<string, unknown>, index: number): ProjectAddres
   return {
     id: stringOrNull(item.id) ?? `address-${index}`,
     addressTextRaw: stringOrNull(item.address_text_raw),
+    normalizedAddressText: stringOrNull(item.normalized_address_text),
     city: stringOrNull(item.city),
+    normalizedCity: stringOrNull(item.normalized_city),
     street: stringOrNull(item.street),
+    normalizedStreet: stringOrNull(item.normalized_street),
     houseNumberFrom: numberOrNull(item.house_number_from),
     houseNumberTo: numberOrNull(item.house_number_to),
     lat: numberOrNull(item.lat),
     lng: numberOrNull(item.lng),
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
     locationQuality: stringOrNull(item.location_quality) ?? "unknown",
+    geometrySource: stringOrNull(item.geometry_source) ?? "unknown",
+    geocodingStatus: stringOrNull(item.geocoding_status) ?? "not_started",
+    geocodingProvider: stringOrNull(item.geocoding_provider),
+    geocodingNote: stringOrNull(item.geocoding_note),
     isPrimary: Boolean(item.is_primary),
     valueOriginType: stringOrNull(item.value_origin_type) ?? "unknown",
+  };
+}
+
+function mapDisplayGeometry(item: Record<string, unknown>) {
+  return {
+    geometryType: stringOrNull(item.geometry_type) ?? "unknown",
+    geometrySource: stringOrNull(item.geometry_source) ?? "unknown",
+    locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
+    locationQuality: stringOrNull(item.location_quality) ?? "unknown",
+    geometryGeojson: item.geometry_geojson && typeof item.geometry_geojson === "object"
+      ? (item.geometry_geojson as Record<string, unknown>)
+      : null,
+    centerLat: numberOrNull(item.center_lat),
+    centerLng: numberOrNull(item.center_lng),
+    addressSummary: stringOrNull(item.address_summary),
+    note: stringOrNull(item.note),
+    cityOnly: Boolean(item.city_only),
+    hasCoordinates: Boolean(item.has_coordinates),
+  };
+}
+
+function mapExternalLayerSummary(item: Record<string, unknown>, index: number): ExternalLayerSummary {
+  return {
+    id: stringOrNull(item.id) ?? `layer-${index}`,
+    layerName: stringOrNull(item.layer_name) ?? "Unnamed layer",
+    sourceName: stringOrNull(item.source_name) ?? "Unknown source",
+    sourceUrl: stringOrNull(item.source_url),
+    geometryType: stringOrNull(item.geometry_type) ?? "point",
+    updateCadence: stringOrNull(item.update_cadence) ?? "ad_hoc",
+    qualityScore: numberOrNull(item.quality_score),
+    visibility: stringOrNull(item.visibility) ?? "public",
+    notes: stringOrNull(item.notes),
+    isActive: typeof item.is_active === "boolean" ? item.is_active : true,
+    defaultOnMap: typeof item.default_on_map === "boolean" ? item.default_on_map : false,
+    recordCount: numberOrNull(item.record_count) ?? 0,
+  };
+}
+
+function mapAdminExternalLayer(item: Record<string, unknown>, index: number): AdminExternalLayerListItem {
+  return {
+    ...mapExternalLayerSummary(item, index),
+    relationCount: numberOrNull(item.relation_count) ?? 0,
+    updatedAt: stringOrNull(item.updated_at) ?? "",
+  };
+}
+
+function mapAdminProjectAlias(item: Record<string, unknown>, index: number): AdminProjectAliasItem {
+  return {
+    id: stringOrNull(item.id) ?? `alias-${index}`,
+    aliasName: stringOrNull(item.alias_name) ?? "",
+    valueOriginType: stringOrNull(item.value_origin_type) ?? "unknown",
+    aliasSourceType: stringOrNull(item.alias_source_type) ?? "manual",
+    sourceReportId: stringOrNull(item.source_report_id),
+    isActive: typeof item.is_active === "boolean" ? item.is_active : true,
+    notes: stringOrNull(item.notes),
+    createdAt: stringOrNull(item.created_at) ?? "",
+    updatedAt: stringOrNull(item.updated_at) ?? "",
+  };
+}
+
+function mapAdminProjectSource(item: Record<string, unknown>, index: number): AdminProjectSourceItem {
+  return {
+    reportId: stringOrNull(item.report_id) ?? `report-${index}`,
+    reportName: stringOrNull(item.report_name),
+    sourceLabel: stringOrNull(item.source_label),
+    sourceUrl: stringOrNull(item.source_url),
+    ingestionStatus: stringOrNull(item.ingestion_status) ?? "draft",
+    periodEndDate: stringOrNull(item.period_end_date) ?? "",
+    publishedAt: stringOrNull(item.published_at),
+  };
+}
+
+function mapAdminLinkedCandidate(item: Record<string, unknown>, index: number): AdminProjectLinkedCandidateItem {
+  return {
+    candidateId: stringOrNull(item.candidate_id) ?? `candidate-${index}`,
+    candidateProjectName: stringOrNull(item.candidate_project_name) ?? "Unnamed candidate",
+    matchingStatus: stringOrNull(item.matching_status) ?? "unmatched",
+    publishStatus: stringOrNull(item.publish_status) ?? "draft",
+    reviewStatus: stringOrNull(item.review_status) ?? "pending",
+    sourceReportId: stringOrNull(item.source_report_id) ?? "",
+    sourceReportName: stringOrNull(item.source_report_name),
+  };
+}
+
+function mapAdminSnapshotSummary(item: Record<string, unknown>, index: number): AdminSnapshotSummary {
+  const diffSummary = safeObject(item.diff_summary);
+  return {
+    id: stringOrNull(item.id) ?? `snapshot-${index}`,
+    reportId: stringOrNull(item.report_id) ?? "",
+    reportName: stringOrNull(item.report_name),
+    snapshotDate: stringOrNull(item.snapshot_date) ?? "",
+    projectStatus: stringOrNull(item.project_status),
+    permitStatus: stringOrNull(item.permit_status),
+    totalUnits: numberOrNull(item.total_units),
+    marketedUnits: numberOrNull(item.marketed_units),
+    soldUnitsCumulative: numberOrNull(item.sold_units_cumulative),
+    unsoldUnits: numberOrNull(item.unsold_units),
+    avgPricePerSqmCumulative: numberOrNull(item.avg_price_per_sqm_cumulative),
+    grossProfitTotalExpected: numberOrNull(item.gross_profit_total_expected),
+    grossMarginExpectedPct: numberOrNull(item.gross_margin_expected_pct),
+    chronologyStatus: stringOrNull(item.chronology_status) ?? "ok",
+    chronologyNotes: stringOrNull(item.chronology_notes),
+    notesInternal: stringOrNull(item.notes_internal),
+    diffSummary: Object.fromEntries(
+      Object.entries(diffSummary).map(([fieldName, raw]) => {
+        const rawObject = safeObject(raw);
+        return [
+          fieldName,
+          {
+            before: stringOrNull(rawObject.before),
+            after: stringOrNull(rawObject.after),
+            changed: typeof rawObject.changed === "boolean" ? rawObject.changed : null,
+          },
+        ];
+      }),
+    ),
   };
 }
 
@@ -226,6 +366,8 @@ function mapMatchSuggestion(item: Record<string, unknown>, index: number): Match
     city: stringOrNull(item.city),
     neighborhood: stringOrNull(item.neighborhood),
     similarityScore: numberOrNull(item.similarity_score) ?? 0,
+    matchState: stringOrNull(item.match_state) ?? "no_match",
+    reasonsJson: safeObject(item.reasons_json),
   };
 }
 
@@ -270,6 +412,7 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
   const latestSnapshot = safeObject(response.latest_snapshot);
   const derivedMetrics = safeObject(response.derived_metrics);
   const sourceQuality = safeObject(response.source_quality);
+  const displayGeometry = safeObject(response.display_geometry);
 
   return {
     identity: {
@@ -295,8 +438,10 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
       district: stringOrNull(location.district),
       locationConfidence: stringOrNull(location.location_confidence) ?? "unknown",
       locationQuality: stringOrNull(location.location_quality) ?? "unknown",
+      addressSummary: stringOrNull(location.address_summary),
       trust: mapTrustMap(location.trust),
     },
+    displayGeometry: mapDisplayGeometry(displayGeometry),
     latestSnapshot: {
       snapshotId: stringOrNull(latestSnapshot.snapshot_id) ?? "",
       snapshotDate: stringOrNull(latestSnapshot.snapshot_date) ?? "",
@@ -500,6 +645,11 @@ export async function getMapProjects(filters: Record<string, string | undefined>
         unsoldUnits: numberOrNull(properties.unsold_units),
         locationConfidence: stringOrNull(properties.location_confidence) ?? "unknown",
         locationQuality: stringOrNull(properties.location_quality) ?? "unknown",
+        geometryType: stringOrNull(properties.geometry_type) ?? "unknown",
+        geometrySource: stringOrNull(properties.geometry_source) ?? "unknown",
+        addressSummary: stringOrNull(properties.address_summary),
+        cityOnly: Boolean(properties.city_only),
+        hasCoordinates: Boolean(properties.has_coordinates),
       },
     };
   });
@@ -512,6 +662,10 @@ export async function getMapProjects(filters: Record<string, string | undefined>
       locationQualityBreakdown: Object.fromEntries(
         Object.entries(safeObject(meta.location_quality_breakdown)).map(([key, rawValue]) => [key, numberOrNull(rawValue) ?? 0]),
       ),
+      geometryTypeBreakdown: Object.fromEntries(
+        Object.entries(safeObject(meta.geometry_type_breakdown)).map(([key, rawValue]) => [key, numberOrNull(rawValue) ?? 0]),
+      ),
+      cityOnlyProjects: numberOrNull(meta.city_only_projects) ?? 0,
     },
   };
   return {
@@ -520,8 +674,64 @@ export async function getMapProjects(filters: Record<string, string | undefined>
   };
 }
 
-export async function getAdminProjects() {
-  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/projects");
+export async function getMapLayers() {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/map/layers");
+  const items = safeArray<Record<string, unknown>>(response?.items).map(mapExternalLayerSummary);
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getMapExternalLayers(layerIds: string[], filters: Record<string, string | undefined>) {
+  const searchParams = buildSearchParams({ city: filters.city });
+  if (layerIds.length > 0) {
+    searchParams.set("layer_ids", layerIds.join(","));
+  }
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/map/layers/features", {
+    searchParams,
+  });
+  const features = safeArray<Record<string, unknown>>(response?.features).map((feature, index) => {
+    const geometry = safeObject(feature.geometry);
+    const properties = safeObject(feature.properties);
+    return {
+      type: "Feature" as const,
+      geometry: Object.keys(geometry).length > 0 ? geometry : null,
+      properties: {
+        layerId: stringOrNull(properties.layer_id) ?? `layer-${index}`,
+        layerName: stringOrNull(properties.layer_name) ?? "Unnamed layer",
+        sourceName: stringOrNull(properties.source_name) ?? "Unknown source",
+        externalRecordId: stringOrNull(properties.external_record_id) ?? `record-${index}`,
+        label: stringOrNull(properties.label),
+        city: stringOrNull(properties.city),
+        effectiveDate: stringOrNull(properties.effective_date),
+        qualityScore: numberOrNull(properties.quality_score),
+        propertiesJson: safeObject(properties.properties_json),
+        relationCount: numberOrNull(properties.relation_count) ?? 0,
+      },
+    };
+  });
+  const meta = safeObject(response?.meta);
+  const item: MapExternalLayersResponse = {
+    features,
+    meta: {
+      selectedLayers: numberOrNull(meta.selected_layers) ?? 0,
+      selectedRecords: numberOrNull(meta.selected_records) ?? 0,
+      layerBreakdown: Object.fromEntries(
+        Object.entries(safeObject(meta.layer_breakdown)).map(([key, rawValue]) => [key, numberOrNull(rawValue) ?? 0]),
+      ),
+    },
+  };
+  return {
+    item,
+    state: response === null ? ("error" as DataState) : features.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getAdminProjects(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/projects", {
+    searchParams: buildSearchParams(filters),
+  });
   const items: AdminProjectListItem[] = safeArray<Record<string, unknown>>(response?.items).map((item, index) => ({
     id: stringOrNull(item.id) ?? `admin-project-${index}`,
     canonicalName: stringOrNull(item.canonical_name) ?? "Unnamed project",
@@ -531,11 +741,18 @@ export async function getAdminProjects() {
     },
     city: stringOrNull(item.city),
     projectBusinessType: stringOrNull(item.project_business_type) ?? "unknown",
+    governmentProgramType: stringOrNull(item.government_program_type) ?? "none",
+    projectUrbanRenewalType: stringOrNull(item.project_urban_renewal_type) ?? "none",
+    projectStatus: stringOrNull(item.project_status),
     permitStatus: stringOrNull(item.permit_status),
     classificationConfidence: stringOrNull(item.classification_confidence) ?? "low",
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
     needsAdminReview: Boolean(item.needs_admin_review),
     latestSnapshotDate: stringOrNull(item.latest_snapshot_date),
+    sourceCount: numberOrNull(item.source_count) ?? 0,
+    addressCount: numberOrNull(item.address_count) ?? 0,
+    isPubliclyVisible: Boolean(item.is_publicly_visible),
+    sourceConflictFlag: Boolean(item.source_conflict_flag),
   }));
   return {
     items,
@@ -552,6 +769,7 @@ export async function getAdminProjectDetail(id: string) {
   const classification = safeObject(response.classification);
   const location = safeObject(response.location);
   const latestSnapshot = safeObject(response.latest_snapshot);
+  const displayGeometry = safeObject(response.display_geometry);
 
   const item: AdminProjectDetail = {
     id: stringOrNull(response.id) ?? id,
@@ -575,24 +793,38 @@ export async function getAdminProjectDetail(id: string) {
       district: stringOrNull(location.district),
       locationConfidence: stringOrNull(location.location_confidence) ?? "unknown",
       locationQuality: stringOrNull(location.location_quality) ?? "unknown",
+      addressSummary: stringOrNull(location.address_summary),
       trust: mapTrustMap(location.trust),
     },
-    latestSnapshot: {
-      snapshotId: stringOrNull(latestSnapshot.snapshot_id) ?? "",
-      snapshotDate: stringOrNull(latestSnapshot.snapshot_date) ?? "",
-      projectStatus: stringOrNull(latestSnapshot.project_status),
-      permitStatus: stringOrNull(latestSnapshot.permit_status),
-      totalUnits: numberOrNull(latestSnapshot.total_units),
-      marketedUnits: numberOrNull(latestSnapshot.marketed_units),
-      soldUnitsCumulative: numberOrNull(latestSnapshot.sold_units_cumulative),
-      unsoldUnits: numberOrNull(latestSnapshot.unsold_units),
-      avgPricePerSqmCumulative: numberOrNull(latestSnapshot.avg_price_per_sqm_cumulative),
-      grossProfitTotalExpected: numberOrNull(latestSnapshot.gross_profit_total_expected),
-      grossMarginExpectedPct: numberOrNull(latestSnapshot.gross_margin_expected_pct),
-      trust: mapTrustMap(latestSnapshot.trust),
-    },
+    displayGeometry: mapDisplayGeometry(displayGeometry),
+    latestSnapshot:
+      Object.keys(latestSnapshot).length > 0
+        ? {
+            snapshotId: stringOrNull(latestSnapshot.snapshot_id) ?? "",
+            snapshotDate: stringOrNull(latestSnapshot.snapshot_date) ?? "",
+            projectStatus: stringOrNull(latestSnapshot.project_status),
+            permitStatus: stringOrNull(latestSnapshot.permit_status),
+            totalUnits: numberOrNull(latestSnapshot.total_units),
+            marketedUnits: numberOrNull(latestSnapshot.marketed_units),
+            soldUnitsCumulative: numberOrNull(latestSnapshot.sold_units_cumulative),
+            unsoldUnits: numberOrNull(latestSnapshot.unsold_units),
+            avgPricePerSqmCumulative: numberOrNull(latestSnapshot.avg_price_per_sqm_cumulative),
+            grossProfitTotalExpected: numberOrNull(latestSnapshot.gross_profit_total_expected),
+            grossMarginExpectedPct: numberOrNull(latestSnapshot.gross_margin_expected_pct),
+            trust: mapTrustMap(latestSnapshot.trust),
+          }
+        : null,
     addresses: safeArray<Record<string, unknown>>(response.addresses).map(mapAddress),
+    aliases: safeArray<Record<string, unknown>>(response.aliases).map(mapAdminProjectAlias),
+    snapshots: safeArray<Record<string, unknown>>(response.snapshots).map(mapAdminSnapshotSummary),
+    linkedSources: safeArray<Record<string, unknown>>(response.linked_sources).map(mapAdminProjectSource),
+    linkedCandidates: safeArray<Record<string, unknown>>(response.linked_candidates).map(mapAdminLinkedCandidate),
     fieldProvenance: safeArray<Record<string, unknown>>(response.field_provenance).map(mapFieldProvenance),
+    provenanceSummary: Object.fromEntries(
+      Object.entries(safeObject(response.provenance_summary)).map(([key, value]) => [key, numberOrNull(value) ?? 0]),
+    ),
+    isPubliclyVisible: Boolean(response.is_publicly_visible),
+    sourceConflictFlag: Boolean(response.source_conflict_flag),
     notesInternal: stringOrNull(response.notes_internal),
     auditLog: safeArray<Record<string, unknown>>(response.audit_log).map((entry, index) => ({
       id: stringOrNull(entry.id) ?? `audit-${index}`,
@@ -622,6 +854,66 @@ export async function updateAdminProject(
   return getAdminProjectDetail(id);
 }
 
+export async function createAdminProject(payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/projects", {
+    method: "POST",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(stringOrNull(response.id) ?? "");
+}
+
+export async function addAdminProjectAlias(projectId: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/projects/${projectId}/aliases`, {
+    method: "POST",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function deleteAdminProjectAlias(projectId: string, aliasId: string, reviewerNote?: string) {
+  const searchParams = new URLSearchParams();
+  if (reviewerNote) {
+    searchParams.set("reviewer_note", reviewerNote);
+  }
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/projects/${projectId}/aliases/${aliasId}`, {
+    method: "DELETE",
+    searchParams,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function createAdminProjectSnapshot(projectId: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/projects/${projectId}/snapshots`, {
+    method: "POST",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function updateAdminSnapshot(snapshotId: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/snapshots/${snapshotId}`, {
+    method: "PATCH",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const projectId = stringOrNull(response.id);
+  return projectId ? getAdminProjectDetail(projectId) : { item: null, state: "error" as DataState };
+}
+
 export async function upsertAdminProjectAddress(
   projectId: string,
   payload: Record<string, unknown>,
@@ -636,6 +928,43 @@ export async function upsertAdminProjectAddress(
   });
   if (response === null) {
     return { item: null, state: "error" };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function normalizeAdminProjectAddress(projectId: string, addressId: string) {
+  const response = await apiFetch<Record<string, unknown>>(
+    `/api/v1/admin/projects/${projectId}/addresses/${addressId}/normalize`,
+    {
+      method: "POST",
+    },
+  );
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function geocodeAdminProjectAddress(projectId: string, addressId: string) {
+  const response = await apiFetch<Record<string, unknown>>(
+    `/api/v1/admin/projects/${projectId}/addresses/${addressId}/geocode`,
+    {
+      method: "POST",
+    },
+  );
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(projectId);
+}
+
+export async function updateAdminProjectDisplayGeometry(projectId: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/projects/${projectId}/display-geometry`, {
+    method: "PATCH",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
   }
   return getAdminProjectDetail(projectId);
 }
@@ -736,6 +1065,25 @@ export async function updateAdminReport(id: string, payload: Record<string, unkn
   return getAdminReportDetail(id);
 }
 
+export async function runAdminReportExtraction(id: string) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/reports/${id}/extract`, {
+    method: "POST",
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminReportDetail(id);
+}
+
+export async function getAdminReportParserRuns(reportId: string) {
+  const response = await apiFetch<{ items?: unknown[] }>(`/api/v1/admin/reports/${reportId}/parser-runs`);
+  const items = safeArray<Record<string, unknown>>(response?.items).map(mapAdminParserRun);
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
 export async function createAdminCandidate(reportId: string, payload: Record<string, unknown>) {
   const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/reports/${reportId}/candidates`, {
     method: "POST",
@@ -826,6 +1174,255 @@ export async function publishAdminCandidate(id: string, payload: Record<string, 
     return { item: null, state: "error" as DataState };
   }
   return getAdminCandidateDetail(id);
+}
+
+export async function getAdminIntake(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/intake", {
+    searchParams: buildSearchParams(filters),
+  });
+  const items: AdminIntakeListItem[] = safeArray<Record<string, unknown>>(response?.items).map((item, index) => ({
+    id: stringOrNull(item.id) ?? `intake-${index}`,
+    candidateProjectName: stringOrNull(item.candidate_project_name) ?? "Unnamed candidate",
+    company: {
+      id: stringOrNull(safeObject(item.company).id) ?? "unknown-company",
+      nameHe: stringOrNull(safeObject(item.company).name_he) ?? "Unknown company",
+    },
+    city: stringOrNull(item.city),
+    sourceReportId: stringOrNull(item.source_report_id) ?? "",
+    sourceReportName: stringOrNull(item.source_report_name),
+    matchingStatus: stringOrNull(item.matching_status) ?? "unmatched",
+    confidenceLevel: stringOrNull(item.confidence_level) ?? "low",
+    reviewStatus: stringOrNull(item.review_status) ?? "pending",
+    publishStatus: stringOrNull(item.publish_status) ?? "draft",
+    matchedProjectId: stringOrNull(item.matched_project_id),
+    matchedProjectName: stringOrNull(item.matched_project_name),
+  }));
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getAdminDuplicates() {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/duplicates");
+  const items: AdminDuplicateSuggestion[] = safeArray<Record<string, unknown>>(response?.items).map((item, index) => ({
+    id: stringOrNull(item.id) ?? `duplicate-${index}`,
+    projectId: stringOrNull(item.project_id) ?? "",
+    projectName: stringOrNull(item.project_name) ?? "Unknown project",
+    duplicateProjectId: stringOrNull(item.duplicate_project_id) ?? "",
+    duplicateProjectName: stringOrNull(item.duplicate_project_name) ?? "Unknown project",
+    companyName: stringOrNull(item.company_name) ?? "Unknown company",
+    city: stringOrNull(item.city),
+    duplicateCity: stringOrNull(item.duplicate_city),
+    matchState: stringOrNull(item.match_state) ?? "no_match",
+    score: numberOrNull(item.score) ?? 0,
+    reasonsJson: safeObject(item.reasons_json),
+    reviewStatus: stringOrNull(item.review_status) ?? "open",
+  }));
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function mergeAdminProjects(payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/projects/merge", {
+    method: "POST",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminProjectDetail(stringOrNull(response.id) ?? "");
+}
+
+function mapCoverageCompany(item: Record<string, unknown>, index: number): AdminCoverageCompany {
+  return {
+    companyId: stringOrNull(item.company_id) ?? `coverage-${index}`,
+    companyNameHe: stringOrNull(item.company_name_he) ?? "Unknown company",
+    isInScope: Boolean(item.is_in_scope),
+    outOfScopeReason: stringOrNull(item.out_of_scope_reason),
+    coveragePriority: stringOrNull(item.coverage_priority) ?? "medium",
+    latestReportIngestedId: stringOrNull(item.latest_report_ingested_id),
+    latestReportName: stringOrNull(item.latest_report_name),
+    historicalCoverageStatus: stringOrNull(item.historical_coverage_status) ?? "not_started",
+    reportsRegistered: numberOrNull(item.reports_registered) ?? 0,
+    projectsCreated: numberOrNull(item.projects_created) ?? 0,
+    snapshotsCreated: numberOrNull(item.snapshots_created) ?? 0,
+    notes: stringOrNull(item.notes),
+  };
+}
+
+function mapAdminParserRun(item: Record<string, unknown>, index: number): AdminParserRun {
+  return {
+    id: stringOrNull(item.id) ?? `parser-run-${index}`,
+    reportId: stringOrNull(item.report_id) ?? "",
+    stagingReportId: stringOrNull(item.staging_report_id),
+    status: stringOrNull(item.status) ?? "failed",
+    parserVersion: stringOrNull(item.parser_version) ?? "unknown",
+    sourceLabel: stringOrNull(item.source_label),
+    sourceReference: stringOrNull(item.source_reference),
+    sourceChecksum: stringOrNull(item.source_checksum),
+    sectionsFound: numberOrNull(item.sections_found) ?? 0,
+    candidateCount: numberOrNull(item.candidate_count) ?? 0,
+    fieldCandidateCount: numberOrNull(item.field_candidate_count) ?? 0,
+    addressCandidateCount: numberOrNull(item.address_candidate_count) ?? 0,
+    warnings: safeArray<string>(item.warnings),
+    errors: safeArray<string>(item.errors),
+    diagnostics: safeObject(item.diagnostics),
+    startedAt: stringOrNull(item.started_at),
+    finishedAt: stringOrNull(item.finished_at),
+    createdAt: stringOrNull(item.created_at) ?? "",
+    updatedAt: stringOrNull(item.updated_at) ?? "",
+  };
+}
+
+function mapAdminAnomalyItem(item: Record<string, unknown>, index: number): AdminAnomalyItem {
+  return {
+    id: stringOrNull(item.id) ?? `anomaly-${index}`,
+    anomalyType: stringOrNull(item.anomaly_type) ?? "unknown",
+    severity: stringOrNull(item.severity) ?? "low",
+    projectId: stringOrNull(item.project_id) ?? "",
+    projectName: stringOrNull(item.project_name) ?? "Unknown project",
+    companyName: stringOrNull(item.company_name) ?? "Unknown company",
+    snapshotId: stringOrNull(item.snapshot_id),
+    reportId: stringOrNull(item.report_id),
+    sourceReportName: stringOrNull(item.source_report_name),
+    summary: stringOrNull(item.summary) ?? "Anomaly detected",
+    detailsJson: safeObject(item.details_json),
+  };
+}
+
+export async function getAdminCoverage() {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/coverage");
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const summary = safeObject(response.summary);
+  const item: AdminCoverageDashboard = {
+    summary: {
+      companiesInScope: numberOrNull(summary.companies_in_scope) ?? 0,
+      reportsRegistered: numberOrNull(summary.reports_registered) ?? 0,
+      projectsCreated: numberOrNull(summary.projects_created) ?? 0,
+      snapshotsCreated: numberOrNull(summary.snapshots_created) ?? 0,
+      unmatchedCandidates: numberOrNull(summary.unmatched_candidates) ?? 0,
+      ambiguousCandidates: numberOrNull(summary.ambiguous_candidates) ?? 0,
+      projectsMissingKeyFields: numberOrNull(summary.projects_missing_key_fields) ?? 0,
+      projectsMissingPreciseLocation: numberOrNull(summary.projects_missing_precise_location) ?? 0,
+    },
+    companies: safeArray<Record<string, unknown>>(response.companies).map(mapCoverageCompany),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function getAdminAnomalies() {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/anomalies");
+  const items = safeArray<Record<string, unknown>>(response?.items).map(mapAdminAnomalyItem);
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getAdminOps() {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/ops");
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const summary = safeObject(response.summary);
+  const item: AdminOpsDashboard = {
+    summary: {
+      reportsRegistered: numberOrNull(summary.reports_registered) ?? 0,
+      projectsCreated: numberOrNull(summary.projects_created) ?? 0,
+      snapshotsCreated: numberOrNull(summary.snapshots_created) ?? 0,
+      openAnomalies: numberOrNull(summary.open_anomalies) ?? 0,
+      parserFailedRuns: numberOrNull(summary.parser_failed_runs) ?? 0,
+      readyToPublish: numberOrNull(summary.ready_to_publish) ?? 0,
+    },
+    ingestionHealth: safeObject(response.ingestion_health),
+    matchingBacklog: Object.fromEntries(
+      Object.entries(safeObject(response.matching_backlog)).map(([key, value]) => [key, numberOrNull(value) ?? 0]),
+    ),
+    publishBacklog: Object.fromEntries(
+      Object.entries(safeObject(response.publish_backlog)).map(([key, value]) => [key, numberOrNull(value) ?? 0]),
+    ),
+    coverageCompleteness: Object.fromEntries(
+      Object.entries(safeObject(response.coverage_completeness)).map(([key, value]) => [key, numberOrNull(value) ?? 0]),
+    ),
+    locationCompleteness: safeObject(response.location_completeness),
+    parserHealth: safeObject(response.parser_health),
+    topAnomalies: safeArray<Record<string, unknown>>(response.top_anomalies).map(mapAdminAnomalyItem),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function getAdminLayers() {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/layers");
+  const items = safeArray<Record<string, unknown>>(response?.items).map(mapAdminExternalLayer);
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getAdminLayerDetail(id: string) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/layers/${id}`);
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const base = mapAdminExternalLayer(response, 0);
+  const item: AdminExternalLayerDetail = {
+    ...base,
+    records: safeArray<Record<string, unknown>>(response.records).map((record, index) => ({
+      id: stringOrNull(record.id) ?? `layer-record-${index}`,
+      externalRecordId: stringOrNull(record.external_record_id) ?? `record-${index}`,
+      label: stringOrNull(record.label),
+      city: stringOrNull(record.city),
+      effectiveDate: stringOrNull(record.effective_date),
+      propertiesJson: safeObject(record.properties_json),
+      updateMetadata: record.update_metadata && typeof record.update_metadata === "object"
+        ? (record.update_metadata as Record<string, unknown>)
+        : null,
+      relationCount: numberOrNull(record.relation_count) ?? 0,
+    })),
+    relationMethodBreakdown: Object.fromEntries(
+      Object.entries(safeObject(response.relation_method_breakdown)).map(([key, value]) => [key, numberOrNull(value) ?? 0]),
+    ),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function createAdminLayer(payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/layers", {
+    method: "POST",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminLayerDetail(stringOrNull(response.id) ?? "");
+}
+
+export async function updateAdminLayer(id: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/layers/${id}`, {
+    method: "PATCH",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminLayerDetail(id);
+}
+
+export async function updateAdminCoverage(companyId: string, payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/coverage/${companyId}`, {
+    method: "PATCH",
+    body: payload,
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return getAdminCoverage();
 }
 
 export async function getHomeKpis(): Promise<KpiDefinition[]> {

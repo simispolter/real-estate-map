@@ -56,6 +56,8 @@ class ProjectListItem(BaseModel):
     latest_snapshot_date: date | None = None
     location_confidence: str
     location_quality: str
+    display_geometry_type: str = "unknown"
+    address_summary: str | None = None
     sell_through_rate: Decimal | None = None
 
 
@@ -86,7 +88,22 @@ class ProjectLocation(BaseModel):
     district: str | None = None
     location_confidence: str
     location_quality: str
+    address_summary: str | None = None
     trust: dict[str, ValueTrustResponse] = Field(default_factory=dict)
+
+
+class ProjectDisplayGeometryResponse(BaseModel):
+    geometry_type: str
+    geometry_source: str
+    location_confidence: str
+    location_quality: str
+    geometry_geojson: dict[str, Any] | None = None
+    center_lat: Decimal | None = None
+    center_lng: Decimal | None = None
+    address_summary: str | None = None
+    note: str | None = None
+    city_only: bool = False
+    has_coordinates: bool = False
 
 
 class ProjectSnapshotDetail(BaseModel):
@@ -114,14 +131,21 @@ class ProjectDerivedMetrics(BaseModel):
 class ProjectAddressResponse(BaseModel):
     id: UUID
     address_text_raw: str | None = None
+    normalized_address_text: str | None = None
     city: str | None = None
+    normalized_city: str | None = None
     street: str | None = None
+    normalized_street: str | None = None
     house_number_from: int | None = None
     house_number_to: int | None = None
     lat: Decimal | None = None
     lng: Decimal | None = None
     location_confidence: str
     location_quality: str
+    geometry_source: str = "unknown"
+    geocoding_status: str = "not_started"
+    geocoding_provider: str | None = None
+    geocoding_note: str | None = None
     is_primary: bool
     value_origin_type: str = "unknown"
 
@@ -155,6 +179,7 @@ class ProjectDetailResponse(BaseModel):
     identity: ProjectIdentity
     classification: ProjectClassification
     location: ProjectLocation
+    display_geometry: ProjectDisplayGeometryResponse
     latest_snapshot: ProjectSnapshotDetail
     derived_metrics: ProjectDerivedMetrics
     addresses: list[ProjectAddressResponse] = Field(default_factory=list)
@@ -255,8 +280,13 @@ class MapProjectProperties(BaseModel):
     project_status: str | None = None
     avg_price_per_sqm_cumulative: Decimal | None = None
     unsold_units: int | None = None
+    geometry_type: str
+    geometry_source: str
     location_confidence: str
     location_quality: str
+    address_summary: str | None = None
+    city_only: bool = False
+    has_coordinates: bool = False
 
 
 class GeoJsonFeature(BaseModel):
@@ -267,4 +297,47 @@ class GeoJsonFeature(BaseModel):
 
 class MapProjectsResponse(BaseModel):
     features: list[GeoJsonFeature] = Field(default_factory=list)
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExternalLayerSummaryResponse(BaseModel):
+    id: UUID
+    layer_name: str
+    source_name: str
+    source_url: str | None = None
+    geometry_type: str
+    update_cadence: str
+    quality_score: Decimal | None = None
+    visibility: str
+    notes: str | None = None
+    is_active: bool = True
+    default_on_map: bool = False
+    record_count: int = 0
+
+
+class ExternalLayersResponse(BaseModel):
+    items: list[ExternalLayerSummaryResponse] = Field(default_factory=list)
+
+
+class ExternalLayerFeatureProperties(BaseModel):
+    layer_id: UUID
+    layer_name: str
+    source_name: str
+    external_record_id: str
+    label: str | None = None
+    city: str | None = None
+    effective_date: date | None = None
+    quality_score: Decimal | None = None
+    properties_json: dict[str, Any] = Field(default_factory=dict)
+    relation_count: int = 0
+
+
+class ExternalLayerGeoJsonFeature(BaseModel):
+    type: str = "Feature"
+    geometry: dict[str, Any] | None = None
+    properties: ExternalLayerFeatureProperties
+
+
+class MapExternalLayersResponse(BaseModel):
+    features: list[ExternalLayerGeoJsonFeature] = Field(default_factory=list)
     meta: dict[str, Any] = Field(default_factory=dict)

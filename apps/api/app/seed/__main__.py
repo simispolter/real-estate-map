@@ -6,8 +6,9 @@ from decimal import Decimal
 from sqlalchemy import delete
 
 from app.db.session import get_session_factory
-from app.models import Company, FieldProvenance, ProjectAddress, ProjectMaster, ProjectSnapshot, Report
+from app.models import Company, ExternalLayer, ExternalLayerRecord, FieldProvenance, ProjectAddress, ProjectMaster, ProjectSnapshot, Report
 from app.seed.data import DATASET_VERSION, NOW, PARSER_VERSION, REAL_DATASET, stable_id
+from app.services.spatial import CITY_CENTROIDS
 
 
 def _confidence_to_score(level: str) -> Decimal:
@@ -49,8 +50,22 @@ async def seed_real_dataset() -> None:
             for entry in REAL_DATASET
             for project in entry["projects"]
         ]
+        external_layer_id = stable_id("external-layer", "municipal-centroids-demo")
+        external_record_ids = [
+            stable_id("external-layer-record", "municipal-centroids-demo", city)
+            for city in sorted(
+                {
+                    project["city"]
+                    for entry in REAL_DATASET
+                    for project in entry["projects"]
+                    if project["city"] in CITY_CENTROIDS
+                }
+            )
+        ]
 
         await session.execute(delete(FieldProvenance).where(FieldProvenance.source_report_id.in_(report_ids)))
+        await session.execute(delete(ExternalLayerRecord).where(ExternalLayerRecord.id.in_(external_record_ids)))
+        await session.execute(delete(ExternalLayer).where(ExternalLayer.id == external_layer_id))
         await session.execute(delete(ProjectAddress).where(ProjectAddress.project_id.in_(project_ids)))
         await session.execute(delete(ProjectSnapshot).where(ProjectSnapshot.id.in_(snapshot_ids)))
         await session.execute(delete(ProjectMaster).where(ProjectMaster.id.in_(project_ids)))
@@ -115,7 +130,7 @@ async def seed_real_dataset() -> None:
                         project_deal_type="ownership",
                         project_usage_profile="residential_only",
                         is_publicly_visible=True,
-                        location_confidence="city",
+                        location_confidence="city_only",
                         classification_confidence=project_data["classification_confidence"],
                         mapping_review_status="approved",
                         source_conflict_flag=False,
@@ -144,7 +159,7 @@ async def seed_real_dataset() -> None:
                         city=project_data["city"],
                         geometry_type="approximate_area",
                         is_primary=True,
-                        location_confidence="city",
+                        location_confidence="city_only",
                         source_type="imported",
                     )
                 )
@@ -206,7 +221,49 @@ async def seed_real_dataset() -> None:
                             reviewed_at=NOW,
                             created_at=NOW,
                         )
-                    )
+            )
+
+        session.add(
+            ExternalLayer(
+                id=external_layer_id,
+                layer_name="Municipal centroids demo layer",
+                source_name="Government open data demo slice",
+                source_url="https://info.data.gov.il/datagov/home",
+                geometry_type="point",
+                update_cadence="monthly",
+                quality_score=Decimal("68.00"),
+                visibility="public",
+                notes="Demo open-data-backed overlay proving the external layer framework. Replace with a true dataset ingestion flow in a later phase.",
+                is_active=True,
+                default_on_map=False,
+            )
+        )
+        for city in sorted(
+            {
+                project["city"]
+                for entry in REAL_DATASET
+                for project in entry["projects"]
+                if project["city"] in CITY_CENTROIDS
+            }
+        ):
+            lat, lng = CITY_CENTROIDS[city]
+            session.add(
+                ExternalLayerRecord(
+                    id=stable_id("external-layer-record", "municipal-centroids-demo", city),
+                    layer_id=external_layer_id,
+                    external_record_id=city,
+                    label=city,
+                    city=city,
+                    geometry_geojson={"type": "Point", "coordinates": [lng, lat]},
+                    display_center_lat=Decimal(str(lat)),
+                    display_center_lng=Decimal(str(lng)),
+                    properties_json={"kind": "municipal_centroid", "city": city, "demo": True},
+                    effective_date=None,
+                    source_metadata={"catalog": "info.data.gov.il", "scope": "demo_slice"},
+                    update_metadata={"seed_version": DATASET_VERSION},
+                    is_active=True,
+                )
+            )
 
         await session.commit()
 

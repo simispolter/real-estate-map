@@ -30,6 +30,33 @@ class AdminReportsListResponse(BaseModel):
     items: list[AdminReportSummary] = Field(default_factory=list)
 
 
+class AdminParserRunItem(BaseModel):
+    id: UUID
+    report_id: UUID
+    staging_report_id: UUID | None = None
+    status: str
+    parser_version: str
+    source_label: str | None = None
+    source_reference: str | None = None
+    source_checksum: str | None = None
+    sections_found: int = 0
+    candidate_count: int = 0
+    field_candidate_count: int = 0
+    address_candidate_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminParserRunsResponse(BaseModel):
+    report_id: UUID
+    items: list[AdminParserRunItem] = Field(default_factory=list)
+
+
 class AdminFieldCandidateInput(BaseModel):
     id: UUID | None = None
     field_name: str
@@ -175,6 +202,8 @@ class MatchSuggestionResponse(BaseModel):
     city: str | None = None
     neighborhood: str | None = None
     similarity_score: float
+    match_state: str = "no_match"
+    reasons_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class CandidateCompareRowResponse(BaseModel):
@@ -260,4 +289,3 @@ class AdminCandidateMatchRequest(BaseModel):
 
 class AdminCandidatePublishRequest(BaseModel):
     reviewer_note: str | None = None
-

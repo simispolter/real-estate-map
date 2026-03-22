@@ -59,17 +59,56 @@ project_usage_profile_enum = pg_enum(
     "residential_commercial",
     "residential_mixed",
 )
-location_confidence_enum = pg_enum("location_confidence_enum", "exact", "street", "neighborhood", "city", "unknown")
+location_confidence_enum = pg_enum("location_confidence_enum", "exact", "approximate", "city_only", "unknown")
 classification_confidence_enum = pg_enum("classification_confidence_enum", "high", "medium", "low")
 mapping_review_status_enum = pg_enum("mapping_review_status_enum", "pending", "reviewed", "approved", "rejected")
 geometry_type_enum = pg_enum("geometry_type_enum", "point", "line", "polygon", "approximate_area")
 address_source_type_enum = pg_enum("address_source_type_enum", "parser", "admin", "geocoder", "imported")
+spatial_geometry_type_enum = pg_enum(
+    "spatial_geometry_type_enum",
+    "exact_point",
+    "approximate_point",
+    "address_range",
+    "polygon",
+    "area",
+    "city_centroid",
+    "unknown",
+)
+geometry_source_enum = pg_enum(
+    "geometry_source_enum",
+    "reported",
+    "geocoded",
+    "manual_override",
+    "city_registry",
+    "inferred",
+    "unknown",
+)
+geocoding_status_enum = pg_enum(
+    "geocoding_status_enum",
+    "not_started",
+    "normalized",
+    "geocoded",
+    "failed",
+    "manual_override",
+)
 project_status_enum = pg_enum("project_status_enum", "planning", "permit", "construction", "marketing", "completed", "stalled")
 permit_status_enum = pg_enum("permit_status_enum", "none", "pending", "granted", "partial")
 provenance_entity_type_enum = pg_enum("provenance_entity_type_enum", "project_master", "snapshot", "land_reserve", "address")
 extraction_method_enum = pg_enum("extraction_method_enum", "table", "text", "rule", "llm", "admin")
 review_status_enum = pg_enum("review_status_enum", "pending", "approved", "corrected", "rejected")
 value_origin_type_enum = pg_enum("value_origin_type_enum", "reported", "inferred", "manual", "imported", "unknown")
+alias_source_type_enum = pg_enum("alias_source_type_enum", "manual", "source", "system")
+match_suggestion_state_enum = pg_enum("match_suggestion_state_enum", "exact", "likely", "ambiguous", "no_match")
+duplicate_review_status_enum = pg_enum("duplicate_review_status_enum", "open", "merged", "dismissed")
+coverage_priority_enum = pg_enum("coverage_priority_enum", "high", "medium", "low")
+historical_coverage_status_enum = pg_enum(
+    "historical_coverage_status_enum",
+    "not_started",
+    "partial",
+    "current_only",
+    "historical_complete",
+)
+snapshot_chronology_status_enum = pg_enum("snapshot_chronology_status_enum", "ok", "out_of_order", "duplicate_date")
 candidate_match_status_enum = pg_enum(
     "candidate_match_status_enum",
     "unmatched",
@@ -94,6 +133,48 @@ review_queue_entity_type_enum = pg_enum(
     "field_candidate",
     "address_candidate",
 )
+external_layer_geometry_type_enum = pg_enum(
+    "external_layer_geometry_type_enum",
+    "point",
+    "line",
+    "polygon",
+    "mixed",
+)
+external_layer_update_cadence_enum = pg_enum(
+    "external_layer_update_cadence_enum",
+    "ad_hoc",
+    "daily",
+    "weekly",
+    "monthly",
+    "quarterly",
+    "annual",
+)
+external_layer_visibility_enum = pg_enum(
+    "external_layer_visibility_enum",
+    "public",
+    "admin_only",
+    "hidden",
+)
+external_relation_method_enum = pg_enum(
+    "external_relation_method_enum",
+    "address_based",
+    "geometry_overlap",
+    "manual_linkage",
+)
+external_relation_status_enum = pg_enum(
+    "external_relation_status_enum",
+    "suggested",
+    "confirmed",
+    "rejected",
+)
+parser_run_status_enum = pg_enum(
+    "parser_run_status_enum",
+    "queued",
+    "running",
+    "succeeded",
+    "partial",
+    "failed",
+)
 
 
 class Company(TimestampMixin, Base):
@@ -110,6 +191,7 @@ class Company(TimestampMixin, Base):
     projects: Mapped[list["ProjectMaster"]] = relationship(back_populates="company")
     staging_reports: Mapped[list["StagingReport"]] = relationship(back_populates="company")
     staging_candidates: Mapped[list["StagingProjectCandidate"]] = relationship(back_populates="company")
+    coverage_registry: Mapped["CompanyCoverageRegistry | None"] = relationship(back_populates="company")
 
 
 class AdminUser(TimestampMixin, Base):
@@ -154,6 +236,7 @@ class Report(TimestampMixin, Base):
     provenance_rows: Mapped[list["FieldProvenance"]] = relationship(back_populates="report")
     staging_report: Mapped["StagingReport | None"] = relationship(back_populates="report")
     review_queue_items: Mapped[list["ReviewQueueItem"]] = relationship(back_populates="report")
+    parser_runs: Mapped[list["ParserRunLog"]] = relationship(back_populates="report")
 
 
 class ProjectMaster(TimestampMixin, Base):
@@ -181,11 +264,47 @@ class ProjectMaster(TimestampMixin, Base):
     mapping_review_status: Mapped[str] = mapped_column(mapping_review_status_enum, nullable=False, default="pending")
     source_conflict_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notes_internal: Mapped[str | None] = mapped_column(Text)
+    display_geometry_type: Mapped[str] = mapped_column(spatial_geometry_type_enum, nullable=False, default="unknown")
+    display_geometry_source: Mapped[str] = mapped_column(geometry_source_enum, nullable=False, default="unknown")
+    display_geometry_confidence: Mapped[str] = mapped_column(location_confidence_enum, nullable=False, default="unknown")
+    display_geometry_geojson: Mapped[dict | None] = mapped_column(JSONB)
+    display_center_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    display_center_lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    display_address_summary: Mapped[str | None] = mapped_column(Text)
+    display_geometry_note: Mapped[str | None] = mapped_column(Text)
+    merged_into_project_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="SET NULL"),
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     company: Mapped["Company"] = relationship(back_populates="projects")
+    aliases: Mapped[list["ProjectAlias"]] = relationship(back_populates="project")
     addresses: Mapped[list["ProjectAddress"]] = relationship(back_populates="project")
     snapshots: Mapped[list["ProjectSnapshot"]] = relationship(back_populates="project")
+    merged_into_project: Mapped["ProjectMaster | None"] = relationship(remote_side="ProjectMaster.id")
+
+
+class ProjectAlias(TimestampMixin, Base):
+    __tablename__ = "project_aliases"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    alias_name: Mapped[str] = mapped_column(Text, nullable=False)
+    value_origin_type: Mapped[str] = mapped_column(value_origin_type_enum, nullable=False, default="manual")
+    alias_source_type: Mapped[str] = mapped_column(alias_source_type_enum, nullable=False, default="manual")
+    source_report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="aliases")
 
 
 class ProjectAddress(TimestampMixin, Base):
@@ -203,12 +322,21 @@ class ProjectAddress(TimestampMixin, Base):
     house_number_to: Mapped[int | None] = mapped_column(Integer)
     city: Mapped[str | None] = mapped_column(Text)
     postal_code: Mapped[str | None] = mapped_column(Text)
+    normalized_address_text: Mapped[str | None] = mapped_column(Text)
+    normalized_street: Mapped[str | None] = mapped_column(Text)
+    normalized_city: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     geometry_type: Mapped[str] = mapped_column(geometry_type_enum, nullable=False, default="point")
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     location_confidence: Mapped[str] = mapped_column(location_confidence_enum, nullable=False, default="unknown")
     source_type: Mapped[str] = mapped_column(address_source_type_enum, nullable=False, default="imported")
+    geometry_source: Mapped[str] = mapped_column(geometry_source_enum, nullable=False, default="unknown")
+    geocoding_status: Mapped[str] = mapped_column(geocoding_status_enum, nullable=False, default="not_started")
+    geocoding_provider: Mapped[str | None] = mapped_column(Text)
+    geocoding_query: Mapped[str | None] = mapped_column(Text)
+    geocoded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    geocoding_note: Mapped[str | None] = mapped_column(Text)
     assigned_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("admin_users.id"))
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -264,6 +392,9 @@ class ProjectSnapshot(TimestampMixin, Base):
     estimated_start_date: Mapped[date | None] = mapped_column(Date)
     estimated_completion_date: Mapped[date | None] = mapped_column(Date)
     needs_admin_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    chronology_status: Mapped[str] = mapped_column(snapshot_chronology_status_enum, nullable=False, default="ok")
+    chronology_notes: Mapped[str | None] = mapped_column(Text)
+    notes_internal: Mapped[str | None] = mapped_column(Text)
 
     project: Mapped["ProjectMaster"] = relationship(back_populates="snapshots")
     report: Mapped["Report"] = relationship(back_populates="project_snapshots")
@@ -332,6 +463,7 @@ class StagingReport(TimestampMixin, Base):
 
     report: Mapped["Report"] = relationship(back_populates="staging_report")
     company: Mapped["Company"] = relationship(back_populates="staging_reports")
+    parser_runs: Mapped[list["ParserRunLog"]] = relationship(back_populates="staging_report")
     sections: Mapped[list["StagingSection"]] = relationship(back_populates="staging_report")
     candidates: Mapped[list["StagingProjectCandidate"]] = relationship(back_populates="staging_report")
 
@@ -345,6 +477,10 @@ class StagingSection(TimestampMixin, Base):
         ForeignKey("staging_reports.id", ondelete="CASCADE"),
         nullable=False,
     )
+    parser_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("parser_run_logs.id", ondelete="SET NULL"),
+    )
     section_name: Mapped[str] = mapped_column(Text, nullable=False)
     raw_label: Mapped[str | None] = mapped_column(Text)
     source_page_from: Mapped[int | None] = mapped_column(Integer)
@@ -352,6 +488,7 @@ class StagingSection(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     staging_report: Mapped["StagingReport"] = relationship(back_populates="sections")
+    parser_run: Mapped["ParserRunLog | None"] = relationship(back_populates="sections")
     candidates: Mapped[list["StagingProjectCandidate"]] = relationship(back_populates="staging_section")
 
 
@@ -363,6 +500,10 @@ class StagingProjectCandidate(TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("staging_reports.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    parser_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("parser_run_logs.id", ondelete="SET NULL"),
     )
     company_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -402,12 +543,14 @@ class StagingProjectCandidate(TimestampMixin, Base):
     diff_summary: Mapped[dict | None] = mapped_column(JSONB)
 
     staging_report: Mapped["StagingReport"] = relationship(back_populates="candidates")
+    parser_run: Mapped["ParserRunLog | None"] = relationship(back_populates="candidates")
     staging_section: Mapped["StagingSection | None"] = relationship(back_populates="candidates")
     company: Mapped["Company"] = relationship(back_populates="staging_candidates")
     matched_project: Mapped["ProjectMaster | None"] = relationship()
     field_candidates: Mapped[list["StagingFieldCandidate"]] = relationship(back_populates="candidate")
     address_candidates: Mapped[list["StagingAddressCandidate"]] = relationship(back_populates="candidate")
     review_queue_items: Mapped[list["ReviewQueueItem"]] = relationship(back_populates="candidate")
+    match_suggestions: Mapped[list["CandidateMatchSuggestion"]] = relationship(back_populates="candidate")
 
 
 class StagingFieldCandidate(TimestampMixin, Base):
@@ -474,3 +617,193 @@ class ReviewQueueItem(TimestampMixin, Base):
 
     report: Mapped["Report | None"] = relationship(back_populates="review_queue_items")
     candidate: Mapped["StagingProjectCandidate | None"] = relationship(back_populates="review_queue_items")
+
+
+class CandidateMatchSuggestion(TimestampMixin, Base):
+    __tablename__ = "candidate_match_suggestions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("staging_project_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    suggested_project_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+    )
+    match_state: Mapped[str] = mapped_column(match_suggestion_state_enum, nullable=False)
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    reasons_json: Mapped[dict | None] = mapped_column(JSONB)
+    is_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    candidate: Mapped["StagingProjectCandidate"] = relationship(back_populates="match_suggestions")
+    suggested_project: Mapped["ProjectMaster | None"] = relationship()
+
+
+class ProjectDuplicateSuggestion(TimestampMixin, Base):
+    __tablename__ = "project_duplicate_suggestions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    duplicate_project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    match_state: Mapped[str] = mapped_column(match_suggestion_state_enum, nullable=False)
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    reasons_json: Mapped[dict | None] = mapped_column(JSONB)
+    review_status: Mapped[str] = mapped_column(duplicate_review_status_enum, nullable=False, default="open")
+    reviewed_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectMergeLog(Base):
+    __tablename__ = "project_merge_log"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    winner_project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    loser_project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    merged_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"))
+    merge_reason: Mapped[str | None] = mapped_column(Text)
+    summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CompanyCoverageRegistry(TimestampMixin, Base):
+    __tablename__ = "company_coverage_registry"
+
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    is_in_scope: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    out_of_scope_reason: Mapped[str | None] = mapped_column(Text)
+    coverage_priority: Mapped[str] = mapped_column(coverage_priority_enum, nullable=False, default="medium")
+    latest_report_ingested_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    historical_coverage_status: Mapped[str] = mapped_column(
+        historical_coverage_status_enum,
+        nullable=False,
+        default="not_started",
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    company: Mapped["Company"] = relationship(back_populates="coverage_registry")
+
+
+class ExternalLayer(TimestampMixin, Base):
+    __tablename__ = "external_layers"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    layer_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    geometry_type: Mapped[str] = mapped_column(external_layer_geometry_type_enum, nullable=False, default="point")
+    update_cadence: Mapped[str] = mapped_column(external_layer_update_cadence_enum, nullable=False, default="ad_hoc")
+    quality_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    visibility: Mapped[str] = mapped_column(external_layer_visibility_enum, nullable=False, default="public")
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    default_on_map: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    records: Mapped[list["ExternalLayerRecord"]] = relationship(back_populates="layer")
+
+
+class ExternalLayerRecord(TimestampMixin, Base):
+    __tablename__ = "external_layer_records"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    layer_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("external_layers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    external_record_id: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(Text)
+    geometry_geojson: Mapped[dict | None] = mapped_column(JSONB)
+    display_center_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    display_center_lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    properties_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    effective_date: Mapped[date | None] = mapped_column(Date)
+    source_metadata: Mapped[dict | None] = mapped_column(JSONB)
+    update_metadata: Mapped[dict | None] = mapped_column(JSONB)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    layer: Mapped["ExternalLayer"] = relationship(back_populates="records")
+    project_relations: Mapped[list["ExternalLayerProjectRelation"]] = relationship(back_populates="record")
+
+
+class ExternalLayerProjectRelation(TimestampMixin, Base):
+    __tablename__ = "external_layer_project_relations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    external_layer_record_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("external_layer_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    relation_method: Mapped[str] = mapped_column(external_relation_method_enum, nullable=False)
+    confidence_level: Mapped[str] = mapped_column(classification_confidence_enum, nullable=False, default="medium")
+    relation_status: Mapped[str] = mapped_column(external_relation_status_enum, nullable=False, default="suggested")
+    notes: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB)
+
+    record: Mapped["ExternalLayerRecord"] = relationship(back_populates="project_relations")
+    project: Mapped["ProjectMaster"] = relationship()
+
+
+class ParserRunLog(TimestampMixin, Base):
+    __tablename__ = "parser_run_logs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    staging_report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("staging_reports.id", ondelete="SET NULL"),
+    )
+    status: Mapped[str] = mapped_column(parser_run_status_enum, nullable=False, default="queued")
+    parser_version: Mapped[str] = mapped_column(Text, nullable=False)
+    source_label: Mapped[str | None] = mapped_column(Text)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    source_checksum: Mapped[str | None] = mapped_column(Text)
+    sections_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    candidate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    field_candidate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    address_candidate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    warnings_json: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    errors_json: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    diagnostics_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    report: Mapped["Report"] = relationship(back_populates="parser_runs")
+    staging_report: Mapped["StagingReport | None"] = relationship(back_populates="parser_runs")
+    sections: Mapped[list["StagingSection"]] = relationship(back_populates="parser_run")
+    candidates: Mapped[list["StagingProjectCandidate"]] = relationship(back_populates="parser_run")

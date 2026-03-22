@@ -8,11 +8,14 @@ export const publicNavigation = [
 ];
 
 export const adminNavigation = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/reports", label: "Reports" },
-  { href: "/admin/projects", label: "Projects Review" },
-  { href: "/admin#reports", label: "Reports Queue" },
-  { href: "/admin#publish", label: "Publish Center" },
+  { href: "/admin/projects", label: "Projects" },
+  { href: "/admin/intake", label: "Intake" },
+  { href: "/admin/duplicates", label: "Duplicates" },
+  { href: "/admin/coverage", label: "Coverage" },
+  { href: "/admin/ops", label: "Ops" },
+  { href: "/admin/anomalies", label: "Anomalies" },
+  { href: "/admin/layers", label: "Layers" },
+  { href: "/admin/sources", label: "Sources" },
 ];
 
 export const companyKpis: KpiDefinition[] = [
@@ -38,21 +41,21 @@ export const companyKpis: KpiDefinition[] = [
 
 export const adminKpis: KpiDefinition[] = [
   {
-    id: "reports",
-    label: "Pending reports",
+    id: "projects",
+    label: "Canonical projects",
     value: "0",
-    note: "Upload and parsing are intentionally deferred to the next phase.",
+    note: "Admin now centers on canonical projects, not raw source files.",
   },
   {
-    id: "review",
-    label: "Projects awaiting review",
+    id: "intake",
+    label: "Intake candidates",
     value: "0",
-    note: "Review queue hooks are scaffolded in the API and UI shell.",
+    note: "Candidate review stays separate from canonical edits and publishing.",
   },
   {
-    id: "publish",
-    label: "Publish candidates",
+    id: "sources",
+    label: "Tracked sources",
     value: "0",
-    note: "Public/admin separation is established before the workflow arrives.",
+    note: "Reports remain supporting source records behind the project workflow.",
   },
 ];

@@ -77,12 +77,18 @@ If you already initialized the Postgres volume before the Phase 2 migration chan
 
 - Admin project queue: `http://localhost:3000/admin/projects`
 - Admin project detail: `http://localhost:3000/admin/projects/<project-id>`
-- Current admin flow supports manual correction of classification fields, permit status, city/neighborhood, location confidence, internal notes, address management, and audit logging with a placeholder admin user.
+- Admin intake queue: `http://localhost:3000/admin/intake`
+- Admin source registry: `http://localhost:3000/admin/sources`
+- Admin is now organized around:
+  - Projects as the core canonical workspace
+  - Intake as the candidate review queue
+  - Sources as the supporting report registry
+- Current admin flow supports direct canonical project editing, manual project creation, alias management, snapshot creation/editing, address management, linked intake/source review, and audit logging with a placeholder admin user.
 
 ### Phase 4 Manual Ingestion Bridge
 
-- Admin reports registry: `http://localhost:3000/admin/reports`
-- Admin report workspace: `http://localhost:3000/admin/reports/<report-id>`
+- Source registry: `http://localhost:3000/admin/sources`
+- Source workspace: `http://localhost:3000/admin/sources/<report-id>`
 - Use the report workspace to:
   - register or update a source report record
   - create staging project candidates manually
@@ -122,3 +128,39 @@ If you already initialized the Postgres volume before the Phase 2 migration chan
   - LLM extraction
   - bulk upload automation
   - advanced conflict resolution and multi-review workflows
+
+### Next Sprint Status
+
+- Implemented:
+  - stronger alias handling for canonical projects, including source/manual/system alias types and active/inactive alias state
+  - rules-based candidate match suggestion persistence using company, name similarity, city, neighborhood, and address overlap
+  - duplicate detection plus safe admin merge flow with audit trail
+  - coverage registry and admin coverage dashboard for broader backfill operations
+  - snapshot chronology checks that flag duplicate-date and out-of-order history rows
+  - hardened admin search across canonical name, alias, company, city, and address text
+- Admin operations pages:
+  - `http://localhost:3000/admin/projects`
+  - `http://localhost:3000/admin/intake`
+  - `http://localhost:3000/admin/duplicates`
+  - `http://localhost:3000/admin/coverage`
+  - `http://localhost:3000/admin/sources`
+
+### Current Sprint Status
+
+- Implemented:
+  - deterministic PDF extraction v1 into staging only, with no direct canonical writes from parser output
+  - parser run logs with status, candidate counts, warnings, errors, and diagnostics
+  - source workspace extraction trigger plus parser-run visibility
+  - anomaly checks for sold vs marketed, negative unsold, total vs marketed, unrealistic margin, missing latest cycle, location confidence downgrade, and chronology conflicts
+  - admin ops and anomalies dashboards for ingestion health, backlog, coverage, location completeness, and parser health
+- End-to-end manual flow for one report:
+  - open `http://localhost:3000/admin/sources`
+  - open or create a source report with a valid `source_url` or `source_file_path`
+  - save the source metadata
+  - run `Run automated extraction`
+  - review parser-created candidates in the same source workspace or from `http://localhost:3000/admin/intake`
+  - match, edit, publish, reject, or defer through the existing intake workflow
+- Validation:
+  - `python -m pytest apps/api/tests -q`
+  - `npm run typecheck --workspace @real-estat-map/web`
+  - `npm run build --workspace @real-estat-map/web`

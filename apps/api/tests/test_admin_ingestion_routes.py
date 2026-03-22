@@ -21,6 +21,7 @@ STAGING_REPORT_ID = str(uuid4())
 COMPANY_ID = str(uuid4())
 CANDIDATE_ID = str(uuid4())
 PROJECT_ID = str(uuid4())
+PARSER_RUN_ID = str(uuid4())
 
 
 def report_detail_payload() -> dict:
@@ -87,7 +88,7 @@ def candidate_detail_payload() -> dict:
         "avg_price_per_sqm_cumulative": "31000.00",
         "gross_profit_total_expected": "100000000.00",
         "gross_margin_expected_pct": "18.00",
-        "location_confidence": "city",
+        "location_confidence": "city_only",
         "value_origin_type": "manual",
         "confidence_level": "medium",
         "matching_status": "matched_existing_project",
@@ -120,6 +121,8 @@ def candidate_detail_payload() -> dict:
                 "city": "Ashdod",
                 "neighborhood": None,
                 "similarity_score": 0.98,
+                "match_state": "exact",
+                "reasons_json": {"name_score": 0.98, "city_match": True},
             }
         ],
         "compare_rows": [
@@ -221,3 +224,62 @@ def test_admin_candidate_publish_route(monkeypatch):
     assert payload["publish_status"] == "published"
     assert payload["matched_project_id"] == PROJECT_ID
     assert payload["review_notes"] == "Approved after manual compare"
+
+
+def test_admin_report_extract_route(monkeypatch):
+    async def fake_run_report_extraction(_session, _report_id):
+        extracted = report_detail_payload()
+        extracted["candidate_count"] = 3
+        return extracted
+
+    monkeypatch.setattr(admin_ingestion_endpoints, "run_report_extraction", fake_run_report_extraction)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.post(f"/api/v1/admin/reports/{REPORT_ID}/extract")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["candidate_count"] == 3
+
+
+def test_admin_report_parser_runs_route(monkeypatch):
+    async def fake_list_report_parser_runs(_session, _report_id):
+        return [
+            {
+                "id": PARSER_RUN_ID,
+                "report_id": REPORT_ID,
+                "staging_report_id": STAGING_REPORT_ID,
+                "status": "succeeded",
+                "parser_version": "rule_parser_v1",
+                "source_label": "Official PDF",
+                "source_reference": "https://example.com/report.pdf",
+                "source_checksum": "abc123",
+                "sections_found": 7,
+                "candidate_count": 2,
+                "field_candidate_count": 8,
+                "address_candidate_count": 0,
+                "warnings": [],
+                "errors": [],
+                "diagnostics": {"page_count": 12},
+                "started_at": "2026-03-22T10:00:00Z",
+                "finished_at": "2026-03-22T10:01:00Z",
+                "created_at": "2026-03-22T10:00:00Z",
+                "updated_at": "2026-03-22T10:01:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(admin_ingestion_endpoints, "list_report_parser_runs", fake_list_report_parser_runs)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/v1/admin/reports/{REPORT_ID}/parser-runs")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["parser_version"] == "rule_parser_v1"
+    assert payload["items"][0]["sections_found"] == 7

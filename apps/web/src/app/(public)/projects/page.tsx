@@ -6,7 +6,7 @@ import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { ProjectMapPanel } from "@/components/dashboard/project-map-panel";
 import { ProjectTable } from "@/components/dashboard/project-table";
 import { Panel } from "@/components/ui/panel";
-import { getFiltersMetadata, getMapProjects, getProjects } from "@/lib/api";
+import { getFiltersMetadata, getMapExternalLayers, getMapLayers, getMapProjects, getProjects } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +32,19 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
     project_urban_renewal_type: getSingle(params.project_urban_renewal_type),
     permit_status: getSingle(params.permit_status),
   };
+  const selectedProjectId = getSingle(params.selected_project_id);
+  const selectedLayerIds = (getSingle(params.layers) ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
   const [projects, metadata, mapResults] = await Promise.all([
     getProjects(filters),
     getFiltersMetadata(),
     getMapProjects(filters),
+  ]);
+  const [mapLayers, mapExternalLayers] = await Promise.all([
+    getMapLayers(),
+    getMapExternalLayers(selectedLayerIds, filters),
   ]);
   const projectItems = Array.isArray(projects.items) ? projects.items : [];
   const knownUnsoldUnits = projectItems.reduce((sum, item) => sum + (item.unsoldUnits ?? 0), 0);
@@ -138,7 +147,14 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
 
       <section className="two-column-grid">
         <ProjectTable rows={projectItems} title="Published project results" />
-        <ProjectMapPanel state={mapResults.state} mapData={mapResults.item} />
+        <ProjectMapPanel
+          selectedLayerIds={selectedLayerIds}
+          selectedProjectId={selectedProjectId}
+          state={mapResults.state}
+          mapData={mapResults.item}
+          layers={mapLayers.items}
+          externalLayers={mapExternalLayers.item}
+        />
       </section>
     </>
   );

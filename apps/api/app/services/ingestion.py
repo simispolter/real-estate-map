@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from difflib import SequenceMatcher
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -22,6 +21,7 @@ from app.models import (
     StagingProjectCandidate,
     StagingReport,
 )
+from app.services.identity_ops import get_persisted_candidate_match_suggestions, refresh_candidate_match_suggestions
 from app.services.admin_review import _get_placeholder_admin
 
 
@@ -477,39 +477,9 @@ async def create_candidate(session: AsyncSession, report_id: UUID, payload: dict
         comment=values.get("review_notes"),
         actor_user_id=admin_user.id,
     )
+    await refresh_candidate_match_suggestions(session, candidate)
     await session.commit()
     return await get_candidate_detail(session, candidate.id)
-
-
-async def _candidate_match_suggestions(session: AsyncSession, candidate: StagingProjectCandidate) -> list[dict]:
-    rows = (
-        await session.execute(
-            select(ProjectMaster)
-            .where(
-                ProjectMaster.company_id == candidate.company_id,
-                ProjectMaster.deleted_at.is_(None),
-                or_(ProjectMaster.city == candidate.city, candidate.city is None),
-            )
-            .order_by(ProjectMaster.city.asc(), ProjectMaster.canonical_name.asc())
-        )
-    ).scalars().all()
-    suggestions = []
-    for project in rows:
-        similarity = SequenceMatcher(
-            None,
-            (candidate.candidate_project_name or "").lower(),
-            (project.canonical_name or "").lower(),
-        ).ratio()
-        suggestions.append(
-            {
-                "project_id": project.id,
-                "canonical_name": project.canonical_name,
-                "city": project.city,
-                "neighborhood": project.neighborhood,
-                "similarity_score": round(similarity, 3),
-            }
-        )
-    return sorted(suggestions, key=lambda item: item["similarity_score"], reverse=True)[:5]
 
 
 def _candidate_field_lookup(field_candidates: list[StagingFieldCandidate]) -> dict[str, StagingFieldCandidate]:
@@ -601,6 +571,7 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
 
     candidate, staging_report, report, company, matched_project_name = row
     field_candidates, address_candidates = await _candidate_children(session, candidate.id)
+    await refresh_candidate_match_suggestions(session, candidate)
     compare_rows = await _candidate_compare_rows(session, candidate, field_candidates)
     diff_summary = _diff_summary(compare_rows)
     candidate.diff_summary = {item["field_name"]: item["changed"] for item in diff_summary if item["changed"]}
@@ -673,7 +644,7 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
             }
             for item in address_candidates
         ],
-        "match_suggestions": await _candidate_match_suggestions(session, candidate),
+        "match_suggestions": await get_persisted_candidate_match_suggestions(session, candidate.id),
         "compare_rows": compare_rows,
         "diff_summary": diff_summary,
         "created_at": candidate.created_at,
@@ -721,6 +692,7 @@ async def update_candidate(session: AsyncSession, candidate_id: UUID, payload: d
             setattr(candidate, field_name, values[field_name])
 
     await _replace_candidate_children(session, candidate_id, values)
+    await refresh_candidate_match_suggestions(session, candidate)
     await _record_audit(
         session,
         action="staging_candidate_update",
@@ -747,6 +719,7 @@ async def match_candidate(session: AsyncSession, candidate_id: UUID, payload: di
     if candidate.matching_status not in {"matched_existing_project", "new_project_needed"}:
         candidate.matched_project_id = None
     candidate.review_status = "approved" if candidate.matching_status in {"matched_existing_project", "new_project_needed", "ignored"} else "pending"
+    await refresh_candidate_match_suggestions(session, candidate)
     report_id = (
         await session.execute(select(StagingReport.report_id).where(StagingReport.id == candidate.staging_report_id))
     ).scalar_one()
