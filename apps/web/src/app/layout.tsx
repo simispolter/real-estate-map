@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Source_Serif_4 } from "next/font/google";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 import "./globals.css";
 

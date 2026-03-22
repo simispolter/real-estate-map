@@ -13,21 +13,25 @@ router = APIRouter()
 
 @router.get("/projects", response_model=MapProjectsResponse)
 async def get_map_projects_endpoint(
+    q: str | None = None,
     city: str | None = None,
     company_id: str | None = None,
     project_business_type: str | None = None,
     government_program_type: str | None = None,
     project_urban_renewal_type: str | None = None,
     permit_status: str | None = None,
+    location_confidence: str | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> MapProjectsResponse:
     filters = ProjectListFilters(
+        q=q,
         city=city,
         company_id=UUID(company_id) if company_id else None,
         project_business_type=project_business_type,
         government_program_type=government_program_type,
         project_urban_renewal_type=project_urban_renewal_type,
         permit_status=permit_status,
+        location_confidence=location_confidence,
         page=1,
         page_size=500,
     )

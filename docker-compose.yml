@@ -42,6 +42,8 @@ services:
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
       INTERNAL_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: ${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN:-}
+      NEXT_TELEMETRY_DISABLED: "1"
       WATCHPACK_POLLING: "true"
     depends_on:
       - api

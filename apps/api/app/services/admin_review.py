@@ -442,8 +442,12 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
                 "location_confidence": address.location_confidence,
                 "location_quality": _location_quality(address.location_confidence),
                 "geometry_source": address.geometry_source,
+                "normalized_display_address": address.normalized_display_address,
+                "is_geocoding_ready": address.is_geocoding_ready,
                 "geocoding_status": address.geocoding_status,
+                "geocoding_method": address.geocoding_method,
                 "geocoding_provider": address.geocoding_provider,
+                "geocoding_source_label": address.geocoding_source_label,
                 "geocoding_note": address.geocoding_note,
                 "is_primary": address.is_primary,
                 "value_origin_type": next(
@@ -954,6 +958,17 @@ async def create_project_snapshot(session: AsyncSession, project_id: UUID, paylo
     if existing_snapshot is not None:
         return await update_snapshot(session, existing_snapshot.id, payload)
 
+    same_period_snapshot = (
+        await session.execute(
+            select(ProjectSnapshot).where(
+                ProjectSnapshot.project_id == project_id,
+                ProjectSnapshot.snapshot_date == payload["snapshot_date"],
+            )
+        )
+    ).scalar_one_or_none()
+    if same_period_snapshot is not None:
+        return await update_snapshot(session, same_period_snapshot.id, payload)
+
     chronology_status, chronology_notes = await assess_snapshot_chronology(
         session,
         project.id,
@@ -1153,6 +1168,9 @@ async def upsert_project_address(
         "lng",
         "location_confidence",
         "is_primary",
+        "normalized_display_address",
+        "geocoding_method",
+        "geocoding_source_label",
     ]:
         if field_name in payload and getattr(address, field_name) != payload[field_name]:
             diffs[field_name] = {"before": getattr(address, field_name), "after": payload[field_name]}
@@ -1161,7 +1179,9 @@ async def upsert_project_address(
     if payload.get("lat") is not None and payload.get("lng") is not None:
         address.geometry_source = "manual_override"
         address.geocoding_status = "manual_override"
+        address.geocoding_method = payload.get("geocoding_method") or "manual_point"
         address.geocoding_provider = "admin"
+        address.geocoding_source_label = payload.get("geocoding_source_label") or "Admin manual override"
         address.geocoding_note = "Coordinates were set manually in admin."
     elif address.geometry_source == "unknown" and address.source_type == "admin":
         address.geometry_source = "reported"
@@ -1174,6 +1194,12 @@ async def upsert_project_address(
             other.is_primary = False
 
     await normalize_project_address(session, project=project, address=address, admin_user=admin_user)
+    if payload.get("normalized_display_address"):
+        address.normalized_display_address = payload["normalized_display_address"]
+    if payload.get("geocoding_method"):
+        address.geocoding_method = payload["geocoding_method"]
+    if payload.get("geocoding_source_label"):
+        address.geocoding_source_label = payload["geocoding_source_label"]
     await session.flush()
     await sync_project_display_geometry_from_addresses(session, project, force=True)
     await _write_provenance(
@@ -1307,9 +1333,33 @@ async def update_project_display_geometry(session: AsyncSession, project_id: UUI
         return None
 
     admin_user = await _get_placeholder_admin(session)
+    report = await _report_for_project(session, project, project.canonical_name)
     before = resolved_display_geometry(project)
     apply_manual_display_geometry(project, payload)
     await session.flush()
+    for field_name in [
+        "display_geometry_type",
+        "display_geometry_source",
+        "display_geometry_confidence",
+        "display_center_lat",
+        "display_center_lng",
+        "display_address_summary",
+    ]:
+        value = getattr(project, field_name)
+        if value is not None:
+            await _write_provenance(
+                session,
+                entity_type="project_master",
+                entity_id=project.id,
+                field_name=field_name,
+                normalized_value=str(value),
+                source_report_id=report.id,
+                value_origin_type="manual",
+                confidence_level="medium",
+                admin_user_id=admin_user.id,
+                source_section="Admin display geometry override",
+                review_note=payload.get("change_reason"),
+            )
     await _record_audit(
         session,
         actor_user_id=admin_user.id,

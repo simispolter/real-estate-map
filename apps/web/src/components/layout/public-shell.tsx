@@ -10,6 +10,7 @@ export function PublicShell({ children }: PropsWithChildren) {
         <div>
           <p className="eyebrow">Public Workspace</p>
           <h1 className="shell-title">Residential Real-Estate Intelligence</h1>
+          <p className="panel-copy">Map-first public browsing for Israeli public-company residential projects.</p>
         </div>
         <nav className="nav-links" aria-label="Primary">
           {publicNavigation.map((item) => (

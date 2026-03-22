@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
@@ -8,6 +9,10 @@ from app.schemas.admin import (
     AdminAddressUpsertRequest,
     AdminAnomaliesResponse,
     AdminCoverageDashboardResponse,
+    AdminCoverageBulkRequest,
+    AdminCoverageBulkResponse,
+    AdminCoverageGapsResponse,
+    AdminCoverageReportsResponse,
     AdminCoverageUpdateRequest,
     AdminDuplicatesResponse,
     AdminExternalLayerCreateRequest,
@@ -18,6 +23,7 @@ from app.schemas.admin import (
     AdminMergeProjectsRequest,
     AdminOpsDashboardResponse,
     AdminOverviewResponse,
+    AdminLocationReviewResponse,
     AdminProjectAliasCreateRequest,
     AdminProjectDetailResponse,
     AdminProjectSnapshotsResponse,
@@ -29,6 +35,15 @@ from app.schemas.admin import (
     AdminSnapshotUpdateRequest,
 )
 from app.schemas.ingestion import AdminCandidateDetailResponse
+from app.services.coverage_ops import (
+    apply_coverage_bulk_action,
+    export_coverage_rows,
+    get_coverage_dashboard,
+    list_coverage_gaps,
+    list_coverage_reports,
+    list_location_review_projects,
+    update_company_coverage,
+)
 from app.services.external_layers import (
     create_admin_external_layer,
     get_admin_external_layer_detail,
@@ -43,7 +58,6 @@ from app.services.admin_review import (
     delete_project_address,
     delete_project_alias,
     geocode_admin_project_address,
-    get_admin_coverage_dashboard,
     get_admin_project_detail,
     get_intake_candidate_detail,
     list_admin_duplicates,
@@ -52,7 +66,6 @@ from app.services.admin_review import (
     list_project_snapshots,
     merge_admin_projects,
     normalize_admin_project_address,
-    update_company_coverage,
     update_admin_project,
     update_project_display_geometry,
     update_snapshot,
@@ -318,7 +331,96 @@ async def post_admin_project_merge(
 async def get_admin_coverage(
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminCoverageDashboardResponse:
-    return AdminCoverageDashboardResponse.model_validate(await get_admin_coverage_dashboard(session))
+    return AdminCoverageDashboardResponse.model_validate(await get_coverage_dashboard(session))
+
+
+@router.get("/coverage/companies", response_model=AdminCoverageDashboardResponse)
+async def get_admin_coverage_companies(
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminCoverageDashboardResponse:
+    return AdminCoverageDashboardResponse.model_validate(await get_coverage_dashboard(session))
+
+
+@router.get("/coverage/reports", response_model=AdminCoverageReportsResponse)
+async def get_admin_coverage_reports(
+    company_id: UUID | None = None,
+    ingestion_status: str | None = None,
+    scope: str | None = Query(default=None, pattern="^(in_scope|out_of_scope)$"),
+    published: str | None = Query(default=None, pattern="^(yes|no)$"),
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminCoverageReportsResponse:
+    return AdminCoverageReportsResponse(
+        items=await list_coverage_reports(
+            session,
+            {
+                "company_id": str(company_id) if company_id else None,
+                "ingestion_status": ingestion_status,
+                "scope": scope,
+                "published": published,
+            },
+        )
+    )
+
+
+@router.get("/coverage/gaps", response_model=AdminCoverageGapsResponse)
+async def get_admin_coverage_gaps(
+    company_id: UUID | None = None,
+    city: str | None = None,
+    location_confidence: str | None = None,
+    backfill_status: str | None = None,
+    missing_group: str | None = Query(default=None, pattern="^(location|metrics|stale)$"),
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminCoverageGapsResponse:
+    return AdminCoverageGapsResponse.model_validate(
+        await list_coverage_gaps(
+            session,
+            {
+                "company_id": str(company_id) if company_id else None,
+                "city": city,
+                "location_confidence": location_confidence,
+                "backfill_status": backfill_status,
+                "missing_group": missing_group,
+            },
+        )
+    )
+
+
+@router.post("/coverage/bulk", response_model=AdminCoverageBulkResponse)
+async def post_admin_coverage_bulk(
+    payload: AdminCoverageBulkRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminCoverageBulkResponse:
+    return AdminCoverageBulkResponse.model_validate(
+        await apply_coverage_bulk_action(session, payload.model_dump(exclude_unset=True))
+    )
+
+
+@router.get("/coverage/export")
+async def get_admin_coverage_export(
+    kind: str = Query(pattern="^(gaps|metrics_missing|location_missing|reports)$"),
+    company_id: UUID | None = None,
+    city: str | None = None,
+    location_confidence: str | None = None,
+    backfill_status: str | None = None,
+    missing_group: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    csv_payload, filename = await export_coverage_rows(
+        session,
+        kind,
+        {
+            "company_id": str(company_id) if company_id else None,
+            "city": city,
+            "location_confidence": location_confidence,
+            "backfill_status": backfill_status,
+            "missing_group": missing_group,
+        },
+    )
+    return Response(
+        content=csv_payload,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/coverage/{company_id}", response_model=AdminCoverageDashboardResponse)
@@ -331,6 +433,31 @@ async def patch_admin_coverage_company(
     if dashboard is None:
         raise HTTPException(status_code=404, detail="Company not found")
     return AdminCoverageDashboardResponse.model_validate(dashboard)
+
+
+@router.get("/location-review/projects", response_model=AdminLocationReviewResponse)
+async def get_admin_location_review(
+    company_id: UUID | None = None,
+    city: str | None = None,
+    location_confidence: str | None = None,
+    backfill_status: str | None = None,
+    missing_fields: str | None = Query(default=None, pattern="^(yes|no)$"),
+    include_all: bool = False,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminLocationReviewResponse:
+    return AdminLocationReviewResponse.model_validate(
+        await list_location_review_projects(
+            session,
+            {
+                "company_id": str(company_id) if company_id else None,
+                "city": city,
+                "location_confidence": location_confidence,
+                "backfill_status": backfill_status,
+                "missing_fields": missing_fields,
+                "include_all": include_all,
+            },
+        )
+    )
 
 
 @router.get("/layers", response_model=AdminExternalLayersResponse)

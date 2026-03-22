@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Mapping
 from collections import Counter
 from dataclasses import dataclass, replace
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Company, FieldProvenance, ProjectAddress, ProjectMaster, ProjectSnapshot, Report
+from app.services.spatial import city_centroid_geometry
 from app.services.spatial import location_quality as spatial_location_quality
-from app.services.spatial import resolved_display_geometry
 
 
 ZERO = Decimal("0")
@@ -28,6 +29,7 @@ class ProjectListFilters:
     government_program_type: str | None = None
     project_urban_renewal_type: str | None = None
     permit_status: str | None = None
+    location_confidence: str | None = None
     page: int = 1
     page_size: int = 25
 
@@ -118,6 +120,7 @@ def _value_origin_summary(rows: list[FieldProvenance]) -> dict[str, int]:
     counts = Counter(row.value_origin_type for row in rows)
     return {
         "reported": counts.get("reported", 0),
+        "manual": counts.get("manual", 0),
         "inferred": counts.get("inferred", 0),
         "unknown": counts.get("unknown", 0),
     }
@@ -146,9 +149,107 @@ def _serialize_project_row(row: dict) -> dict:
         "location_confidence": row["location_confidence"],
         "location_quality": _location_quality(row["location_confidence"]),
         "display_geometry_type": row["display_geometry_type"],
+        "geometry_is_manual": row.get("display_geometry_source") == "manual_override",
         "address_summary": row["display_address_summary"],
         "sell_through_rate": _safe_rate(row["sold_units_cumulative"], row["marketed_units"]),
     }
+
+
+def _apply_project_filters(stmt: Select, filters: ProjectListFilters, latest_snapshot) -> Select:
+    if filters.q:
+        term = f"%{filters.q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                ProjectMaster.canonical_name.ilike(term),
+                ProjectMaster.city.ilike(term),
+                ProjectMaster.neighborhood.ilike(term),
+                ProjectMaster.display_address_summary.ilike(term),
+                Company.name_he.ilike(term),
+            )
+        )
+    if filters.city:
+        stmt = stmt.where(ProjectMaster.city == filters.city)
+    if filters.company_id:
+        stmt = stmt.where(ProjectMaster.company_id == filters.company_id)
+    if filters.project_business_type:
+        stmt = stmt.where(ProjectMaster.project_business_type == filters.project_business_type)
+    if filters.government_program_type:
+        stmt = stmt.where(ProjectMaster.government_program_type == filters.government_program_type)
+    if filters.project_urban_renewal_type:
+        stmt = stmt.where(ProjectMaster.project_urban_renewal_type == filters.project_urban_renewal_type)
+    if filters.permit_status:
+        stmt = stmt.where(latest_snapshot.c.permit_status == filters.permit_status)
+    if filters.location_confidence:
+        stmt = stmt.where(ProjectMaster.location_confidence == filters.location_confidence)
+    return stmt
+
+
+def _serialize_display_geometry_from_row(row: Mapping[str, object]) -> dict[str, object]:
+    has_coordinates = row.get("display_center_lat") is not None and row.get("display_center_lng") is not None
+    location_confidence = row.get("display_geometry_confidence") or row.get("location_confidence") or "unknown"
+    is_manual_override = row.get("display_geometry_source") == "manual_override"
+    return {
+        "geometry_type": row.get("display_geometry_type") or "unknown",
+        "geometry_source": row.get("display_geometry_source") or "unknown",
+        "location_confidence": location_confidence,
+        "location_quality": _location_quality(location_confidence if isinstance(location_confidence, str) else None),
+        "geometry_geojson": row.get("display_geometry_geojson"),
+        "center_lat": row.get("display_center_lat"),
+        "center_lng": row.get("display_center_lng"),
+        "address_summary": row.get("display_address_summary"),
+        "note": row.get("display_geometry_note"),
+        "city_only": location_confidence == "city_only",
+        "has_coordinates": has_coordinates,
+        "is_manual_override": is_manual_override,
+        "is_source_derived": not is_manual_override and row.get("display_geometry_source") in {"reported", "city_registry"},
+    }
+
+
+def _resolved_display_geometry_from_row(row: Mapping[str, object]) -> dict[str, object]:
+    geometry_type = row.get("display_geometry_type")
+    if geometry_type != "unknown" and (
+        row.get("display_geometry_geojson") is not None
+        or (row.get("display_center_lat") is not None and row.get("display_center_lng") is not None)
+    ):
+        return _serialize_display_geometry_from_row(row)
+
+    centroid = city_centroid_geometry(row.get("city") if isinstance(row.get("city"), str) else None)
+    if centroid is not None:
+        return {
+            "geometry_type": centroid["geometry_type"],
+            "geometry_source": centroid["geometry_source"],
+            "location_confidence": centroid["location_confidence"],
+            "location_quality": _location_quality(centroid["location_confidence"]),
+            "geometry_geojson": centroid["geometry_geojson"],
+            "center_lat": centroid["center_lat"],
+            "center_lng": centroid["center_lng"],
+            "address_summary": centroid["address_summary"],
+            "note": "Derived at read time from the city centroid registry.",
+            "city_only": True,
+            "has_coordinates": True,
+            "is_manual_override": False,
+            "is_source_derived": True,
+        }
+
+    return _serialize_display_geometry_from_row(row)
+
+
+def _latest_report_subquery() -> Select:
+    return (
+        select(
+            Report.company_id.label("company_id"),
+            Report.filing_reference.label("filing_reference"),
+            Report.period_end_date.label("period_end_date"),
+            Report.publish_date.label("publish_date"),
+            func.row_number()
+            .over(
+                partition_by=Report.company_id,
+                order_by=(Report.period_end_date.desc(), Report.publish_date.desc().nullslast(), Report.created_at.desc()),
+            )
+            .label("row_num"),
+        )
+        .subquery()
+    )
 
 
 async def list_projects(
@@ -156,7 +257,8 @@ async def list_projects(
     filters: ProjectListFilters,
 ) -> tuple[list[dict], int]:
     latest_snapshot = _latest_snapshot_subquery()
-    stmt = (
+    stmt = _apply_project_filters(
+        (
         select(
             ProjectMaster.id.label("project_id"),
             ProjectMaster.canonical_name,
@@ -167,6 +269,7 @@ async def list_projects(
             ProjectMaster.project_urban_renewal_type,
             ProjectMaster.location_confidence,
             ProjectMaster.display_geometry_type,
+            ProjectMaster.display_geometry_source,
             ProjectMaster.display_address_summary,
             Company.id.label("company_id"),
             Company.name_he.label("company_name_he"),
@@ -187,29 +290,10 @@ async def list_projects(
             (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
         )
         .where(ProjectMaster.is_publicly_visible.is_(True))
+        ),
+        filters,
+        latest_snapshot,
     )
-
-    if filters.q:
-        term = f"%{filters.q.strip()}%"
-        stmt = stmt.where(
-            or_(
-                ProjectMaster.canonical_name.ilike(term),
-                ProjectMaster.city.ilike(term),
-                Company.name_he.ilike(term),
-            )
-        )
-    if filters.city:
-        stmt = stmt.where(ProjectMaster.city == filters.city)
-    if filters.company_id:
-        stmt = stmt.where(ProjectMaster.company_id == filters.company_id)
-    if filters.project_business_type:
-        stmt = stmt.where(ProjectMaster.project_business_type == filters.project_business_type)
-    if filters.government_program_type:
-        stmt = stmt.where(ProjectMaster.government_program_type == filters.government_program_type)
-    if filters.project_urban_renewal_type:
-        stmt = stmt.where(ProjectMaster.project_urban_renewal_type == filters.project_urban_renewal_type)
-    if filters.permit_status:
-        stmt = stmt.where(latest_snapshot.c.permit_status == filters.permit_status)
 
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
@@ -262,6 +346,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 Report.filing_reference,
                 Report.period_end_date,
                 Report.publish_date,
+                Report.source_url,
                 Report.source_file_path,
             )
             .join(Company, Company.id == ProjectMaster.company_id)
@@ -276,9 +361,6 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
     if detail is None:
         return None
 
-    project_record = (
-        await session.execute(select(ProjectMaster).where(ProjectMaster.id == project_id))
-    ).scalar_one()
     addresses = (
         await session.execute(
             select(ProjectAddress)
@@ -305,7 +387,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
     pages = sorted({row.source_page for row in provenance if row.source_page is not None})
     missing_fields = sorted({row.field_name for row in provenance if row.value_origin_type == "unknown"})
 
-    display_geometry = resolved_display_geometry(project_record)
+    display_geometry = _resolved_display_geometry_from_row(detail)
 
     return {
         "identity": {
@@ -388,8 +470,12 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 "location_confidence": address.location_confidence,
                 "location_quality": _location_quality(address.location_confidence),
                 "geometry_source": address.geometry_source,
+                "normalized_display_address": address.normalized_display_address,
+                "is_geocoding_ready": address.is_geocoding_ready,
                 "geocoding_status": address.geocoding_status,
+                "geocoding_method": address.geocoding_method,
                 "geocoding_provider": address.geocoding_provider,
+                "geocoding_source_label": address.geocoding_source_label,
                 "geocoding_note": address.geocoding_note,
                 "is_primary": address.is_primary,
                 "value_origin_type": address_provenance_lookup[address.id].value_origin_type
@@ -403,7 +489,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
             "source_report_name": detail["filing_reference"],
             "report_period_end": detail["period_end_date"],
             "published_at": detail["publish_date"],
-            "source_url": detail["source_file_path"],
+            "source_url": detail["source_url"] or detail["source_file_path"],
             "source_pages": ",".join(str(page) for page in pages) if pages else None,
             "confidence_level": detail["classification_confidence"],
             "missing_fields": missing_fields,
@@ -471,44 +557,79 @@ async def get_project_history(session: AsyncSession, project_id: UUID) -> list[d
 
 async def list_companies(session: AsyncSession, filters: CompanyListFilters | None = None) -> list[dict]:
     filters = filters or CompanyListFilters()
-    rows = (
-        await session.execute(
-            select(Company.id)
-            .join(ProjectMaster, ProjectMaster.company_id == Company.id)
-            .where(ProjectMaster.is_publicly_visible.is_(True))
-            .distinct()
+    latest_snapshot = _latest_snapshot_subquery()
+    latest_report = _latest_report_subquery()
+    stmt = (
+        select(
+            Company.id,
+            Company.name_he,
+            Company.ticker,
+            func.count(ProjectMaster.id).label("project_count"),
+            func.count(func.distinct(ProjectMaster.city)).label("city_count"),
+            latest_report.c.period_end_date.label("latest_report_period_end"),
+            latest_report.c.publish_date.label("latest_published_at"),
+            func.coalesce(func.sum(func.coalesce(latest_snapshot.c.unsold_units, 0)), 0).label("known_unsold_units"),
+            func.sum(
+                case(
+                    (ProjectMaster.location_confidence.in_(["exact", "approximate"]), 1),
+                    else_=0,
+                )
+            ).label("projects_with_precise_location_count"),
         )
-    ).scalars().all()
-
-    companies: list[dict] = []
-    for company_id in rows:
-        detail = await get_company_detail(session, company_id)
-        if detail is None:
-            continue
-        if filters.q and filters.q.lower() not in detail["name_he"].lower():
-            continue
-        if filters.city and filters.city not in {item["city"] for item in detail["city_coverage"]}:
-            continue
-        companies.append(
-            {
-                "id": detail["id"],
-                "name_he": detail["name_he"],
-                "ticker": detail["ticker"],
-                "project_count": detail["project_count"],
-                "city_count": detail["city_count"],
-                "latest_report_period_end": detail["latest_report_period_end"],
-                "latest_published_at": detail["latest_published_at"],
-                "known_unsold_units": detail["kpis"]["known_unsold_units"],
-                "projects_with_precise_location_count": detail["kpis"]["projects_with_precise_location_count"],
-            }
+        .join(ProjectMaster, ProjectMaster.company_id == Company.id)
+        .join(
+            latest_snapshot,
+            (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
         )
+        .outerjoin(
+            latest_report,
+            (latest_report.c.company_id == Company.id) & (latest_report.c.row_num == 1),
+        )
+        .where(ProjectMaster.is_publicly_visible.is_(True))
+        .group_by(
+            Company.id,
+            Company.name_he,
+            Company.ticker,
+            latest_report.c.period_end_date,
+            latest_report.c.publish_date,
+        )
+    )
 
-    sort_key = {
-        "city_count": lambda item: item["city_count"],
-        "latest_report": lambda item: item["latest_report_period_end"] or "",
-        "project_count": lambda item: item["project_count"],
-    }.get(filters.sort_by, lambda item: item["project_count"])
-    return sorted(companies, key=sort_key, reverse=True)
+    if filters.q:
+        stmt = stmt.where(Company.name_he.ilike(f"%{filters.q.strip()}%"))
+    if filters.city:
+        stmt = stmt.where(ProjectMaster.city == filters.city)
+
+    order_by = {
+        "city_count": (
+            func.count(func.distinct(ProjectMaster.city)).desc(),
+            Company.name_he.asc(),
+        ),
+        "latest_report": (
+            latest_report.c.period_end_date.desc().nullslast(),
+            Company.name_he.asc(),
+        ),
+        "project_count": (
+            func.count(ProjectMaster.id).desc(),
+            Company.name_he.asc(),
+        ),
+    }.get(filters.sort_by, (func.count(ProjectMaster.id).desc(), Company.name_he.asc()))
+
+    rows = (await session.execute(stmt.order_by(*order_by))).mappings().all()
+    return [
+        {
+            "id": row["id"],
+            "name_he": row["name_he"],
+            "ticker": row["ticker"],
+            "project_count": row["project_count"],
+            "city_count": row["city_count"],
+            "latest_report_period_end": row["latest_report_period_end"],
+            "latest_published_at": row["latest_published_at"],
+            "known_unsold_units": row["known_unsold_units"],
+            "projects_with_precise_location_count": row["projects_with_precise_location_count"] or 0,
+        }
+        for row in rows
+    ]
 
 
 async def get_company_detail(session: AsyncSession, company_id: UUID) -> dict | None:
@@ -607,7 +728,20 @@ async def get_company_projects(session: AsyncSession, company_id: UUID) -> list[
 
 
 async def get_filter_metadata(session: AsyncSession) -> dict:
-    companies = await list_companies(session)
+    latest_snapshot = _latest_snapshot_subquery()
+    companies = (
+        await session.execute(
+            select(Company.id, Company.name_he)
+            .join(ProjectMaster, ProjectMaster.company_id == Company.id)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(ProjectMaster.is_publicly_visible.is_(True))
+            .distinct()
+            .order_by(Company.name_he.asc())
+        )
+    ).mappings().all()
     cities = (
         await session.execute(
             select(ProjectMaster.city)
@@ -642,11 +776,23 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
     ).scalars().all()
     permit_statuses = (
         await session.execute(
-            select(ProjectSnapshot.permit_status)
-            .join(ProjectMaster, ProjectMaster.id == ProjectSnapshot.project_id)
-            .where(ProjectMaster.is_publicly_visible.is_(True), ProjectSnapshot.permit_status.is_not(None))
+            select(latest_snapshot.c.permit_status)
+            .select_from(ProjectMaster)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(ProjectMaster.is_publicly_visible.is_(True), latest_snapshot.c.permit_status.is_not(None))
             .distinct()
-            .order_by(ProjectSnapshot.permit_status.asc())
+            .order_by(latest_snapshot.c.permit_status.asc())
+        )
+    ).scalars().all()
+    location_confidences = (
+        await session.execute(
+            select(ProjectMaster.location_confidence)
+            .where(ProjectMaster.is_publicly_visible.is_(True), ProjectMaster.location_confidence.is_not(None))
+            .distinct()
+            .order_by(ProjectMaster.location_confidence.asc())
         )
     ).scalars().all()
 
@@ -657,98 +803,87 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
         "government_program_types": government_types,
         "project_urban_renewal_types": urban_types,
         "permit_statuses": permit_statuses,
+        "location_confidences": location_confidences,
     }
 
 
 async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -> dict:
     latest_snapshot = _latest_snapshot_subquery()
-    rows = (
-        await session.execute(
-            select(
-                ProjectMaster,
-                Company,
-                latest_snapshot.c.project_status.label("snapshot_project_status"),
-                latest_snapshot.c.permit_status.label("snapshot_permit_status"),
-                latest_snapshot.c.total_units.label("snapshot_total_units"),
-                latest_snapshot.c.marketed_units.label("snapshot_marketed_units"),
-                latest_snapshot.c.sold_units_cumulative.label("snapshot_sold_units_cumulative"),
-                latest_snapshot.c.unsold_units.label("snapshot_unsold_units"),
-                latest_snapshot.c.avg_price_per_sqm_cumulative.label("snapshot_avg_price_per_sqm_cumulative"),
-                latest_snapshot.c.gross_profit_total_expected.label("snapshot_gross_profit_total_expected"),
-                latest_snapshot.c.gross_margin_expected_pct.label("snapshot_gross_margin_expected_pct"),
-                latest_snapshot.c.snapshot_date.label("snapshot_date"),
-            )
-            .join(Company, Company.id == ProjectMaster.company_id)
-            .join(
-                latest_snapshot,
-                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
-            )
-            .where(ProjectMaster.is_publicly_visible.is_(True))
+    stmt = _apply_project_filters(
+        select(
+            ProjectMaster.id.label("project_id"),
+            ProjectMaster.canonical_name,
+            ProjectMaster.city,
+            ProjectMaster.neighborhood,
+            ProjectMaster.project_business_type,
+            ProjectMaster.government_program_type,
+            ProjectMaster.project_urban_renewal_type,
+            ProjectMaster.location_confidence,
+            ProjectMaster.display_geometry_type,
+            ProjectMaster.display_geometry_source,
+            ProjectMaster.display_geometry_confidence,
+            ProjectMaster.display_geometry_geojson,
+            ProjectMaster.display_center_lat,
+            ProjectMaster.display_center_lng,
+            ProjectMaster.display_address_summary,
+            ProjectMaster.display_geometry_note,
+            Company.id.label("company_id"),
+            Company.name_he.label("company_name_he"),
+            latest_snapshot.c.snapshot_id,
+            latest_snapshot.c.project_status,
+            latest_snapshot.c.permit_status,
+            latest_snapshot.c.total_units,
+            latest_snapshot.c.marketed_units,
+            latest_snapshot.c.sold_units_cumulative,
+            latest_snapshot.c.unsold_units,
+            latest_snapshot.c.avg_price_per_sqm_cumulative,
+            latest_snapshot.c.gross_profit_total_expected,
+            latest_snapshot.c.gross_margin_expected_pct,
+            latest_snapshot.c.snapshot_date,
         )
-    ).all()
-    items = []
-    for row_item in rows:
-        project = row_item[0]
-        company = row_item[1]
-        row = {
-            "project_id": project.id,
-            "canonical_name": project.canonical_name,
-            "company_id": company.id,
-            "company_name_he": company.name_he,
-            "city": project.city,
-            "neighborhood": project.neighborhood,
-            "project_business_type": project.project_business_type,
-            "government_program_type": project.government_program_type,
-            "project_urban_renewal_type": project.project_urban_renewal_type,
-            "project_status": row_item.snapshot_project_status,
-            "permit_status": row_item.snapshot_permit_status,
-            "total_units": row_item.snapshot_total_units,
-            "marketed_units": row_item.snapshot_marketed_units,
-            "sold_units_cumulative": row_item.snapshot_sold_units_cumulative,
-            "unsold_units": row_item.snapshot_unsold_units,
-            "avg_price_per_sqm_cumulative": row_item.snapshot_avg_price_per_sqm_cumulative,
-            "gross_profit_total_expected": row_item.snapshot_gross_profit_total_expected,
-            "gross_margin_expected_pct": row_item.snapshot_gross_margin_expected_pct,
-            "snapshot_date": row_item.snapshot_date,
-            "location_confidence": project.location_confidence,
-            "display_geometry_type": project.display_geometry_type,
-            "display_address_summary": project.display_address_summary,
-            "project": project,
-        }
-        serialized = _serialize_project_row(row)
-        items.append(serialized | {"project": project})
+        .join(Company, Company.id == ProjectMaster.company_id)
+        .join(
+            latest_snapshot,
+            (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+        )
+        .where(ProjectMaster.is_publicly_visible.is_(True)),
+        filters,
+        latest_snapshot,
+    ).order_by(Company.name_he.asc(), ProjectMaster.city.asc(), ProjectMaster.canonical_name.asc())
+    rows = (await session.execute(stmt)).mappings().all()
 
-    if filters.city:
-        items = [item for item in items if item["city"] == filters.city]
-    if filters.company_id:
-        items = [item for item in items if item["company"]["id"] == filters.company_id]
-    if filters.project_business_type:
-        items = [item for item in items if item["project_business_type"] == filters.project_business_type]
-    if filters.government_program_type:
-        items = [item for item in items if item["government_program_type"] == filters.government_program_type]
-    if filters.project_urban_renewal_type:
-        items = [item for item in items if item["project_urban_renewal_type"] == filters.project_urban_renewal_type]
-    if filters.permit_status:
-        items = [item for item in items if item["permit_status"] == filters.permit_status]
-    if filters.q:
-        term = filters.q.strip().lower()
-        items = [
-            item
-            for item in items
-            if term in " ".join(
-                [
-                    item["canonical_name"].lower(),
-                    (item["city"] or "").lower(),
-                    item["company"]["name_he"].lower(),
-                    (item["address_summary"] or "").lower(),
-                ]
+    entity_to_project: dict[UUID, UUID] = {}
+    for row in rows:
+        entity_to_project[row["project_id"]] = row["project_id"]
+        if row["snapshot_id"] is not None:
+            entity_to_project[row["snapshot_id"]] = row["project_id"]
+
+    provenance_counts_by_project: dict[UUID, Counter[str]] = {row["project_id"]: Counter() for row in rows}
+    entity_ids = list(entity_to_project.keys())
+    if entity_ids:
+        provenance_rows = (
+            await session.execute(
+                select(
+                    FieldProvenance.entity_id,
+                    FieldProvenance.value_origin_type,
+                    func.count().label("row_count"),
+                )
+                .where(FieldProvenance.entity_id.in_(entity_ids))
+                .group_by(FieldProvenance.entity_id, FieldProvenance.value_origin_type)
             )
-        ]
+        ).all()
+        for entity_id, value_origin_type, row_count in provenance_rows:
+            project_id = entity_to_project.get(entity_id)
+            if project_id is None:
+                continue
+            provenance_counts_by_project.setdefault(project_id, Counter())[value_origin_type] += int(row_count)
 
     features = []
-    for item in items:
-        display_geometry = resolved_display_geometry(item["project"])
+    for row in rows:
+        item = _serialize_project_row(row)
+        display_geometry = _resolved_display_geometry_from_row(row)
         geometry = display_geometry["geometry_geojson"]
+        origin_counts = provenance_counts_by_project.get(row["project_id"], Counter())
 
         features.append(
             {
@@ -757,19 +892,37 @@ async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -
                 "properties": {
                     "project_id": item["project_id"],
                     "canonical_name": item["canonical_name"],
+                    "company_id": row["company_id"],
                     "company_name": item["company"]["name_he"],
                     "city": item["city"],
+                    "neighborhood": row["neighborhood"],
                     "project_business_type": item["project_business_type"],
+                    "government_program_type": row["government_program_type"],
+                    "project_urban_renewal_type": row["project_urban_renewal_type"],
                     "project_status": item["project_status"],
+                    "permit_status": row["permit_status"],
+                    "total_units": row["total_units"],
+                    "marketed_units": row["marketed_units"],
+                    "sold_units_cumulative": row["sold_units_cumulative"],
                     "avg_price_per_sqm_cumulative": item["avg_price_per_sqm_cumulative"],
                     "unsold_units": item["unsold_units"],
+                    "gross_profit_total_expected": row["gross_profit_total_expected"],
+                    "gross_margin_expected_pct": row["gross_margin_expected_pct"],
+                    "latest_snapshot_date": row["snapshot_date"],
                     "geometry_type": display_geometry["geometry_type"],
                     "geometry_source": display_geometry["geometry_source"],
                     "location_confidence": display_geometry["location_confidence"],
                     "location_quality": display_geometry["location_quality"],
                     "address_summary": display_geometry["address_summary"],
+                    "center_lat": display_geometry["center_lat"],
+                    "center_lng": display_geometry["center_lng"],
                     "city_only": display_geometry["city_only"],
                     "has_coordinates": display_geometry["has_coordinates"],
+                    "geometry_is_manual": display_geometry["is_manual_override"],
+                    "is_source_derived": display_geometry["is_source_derived"],
+                    "reported_count": origin_counts.get("reported", 0),
+                    "inferred_count": origin_counts.get("inferred", 0),
+                    "manual_count": origin_counts.get("manual", 0),
                 },
             }
         )

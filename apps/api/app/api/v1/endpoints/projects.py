@@ -29,6 +29,7 @@ def _filters_from_query(
     government_program_type: str | None,
     project_urban_renewal_type: str | None,
     permit_status: str | None,
+    location_confidence: str | None,
     page: int,
     page_size: int,
 ) -> ProjectListFilters:
@@ -40,6 +41,7 @@ def _filters_from_query(
         government_program_type=government_program_type,
         project_urban_renewal_type=project_urban_renewal_type,
         permit_status=permit_status,
+        location_confidence=location_confidence,
         page=page,
         page_size=page_size,
     )
@@ -54,6 +56,7 @@ async def export_projects_csv_endpoint(
     government_program_type: str | None = Query(default=None),
     project_urban_renewal_type: str | None = Query(default=None),
     permit_status: str | None = Query(default=None),
+    location_confidence: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
     csv_content = await export_projects_csv(
@@ -66,6 +69,7 @@ async def export_projects_csv_endpoint(
             government_program_type,
             project_urban_renewal_type,
             permit_status,
+            location_confidence,
             1,
             1000,
         ),
@@ -86,6 +90,7 @@ async def list_projects_endpoint(
     government_program_type: str | None = Query(default=None),
     project_urban_renewal_type: str | None = Query(default=None),
     permit_status: str | None = Query(default=None),
+    location_confidence: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
@@ -100,6 +105,7 @@ async def list_projects_endpoint(
             government_program_type,
             project_urban_renewal_type,
             permit_status,
+            location_confidence,
             page,
             page_size,
         ),

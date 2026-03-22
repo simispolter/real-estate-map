@@ -141,6 +141,9 @@ export default async function AdminProjectsPage({ searchParams }: PageProps) {
             <Link className="secondary-button" href="/admin/projects">
               Clear
             </Link>
+            <Link className="secondary-button" href="/admin/projects/location-review">
+              Location review
+            </Link>
           </div>
         </form>
       </Panel>
@@ -164,6 +167,7 @@ export default async function AdminProjectsPage({ searchParams }: PageProps) {
                   <th>City</th>
                   <th>Classification</th>
                   <th>Status</th>
+                  <th>Location</th>
                   <th>Sources</th>
                   <th>Addresses</th>
                   <th>Visibility</th>
@@ -192,6 +196,7 @@ export default async function AdminProjectsPage({ searchParams }: PageProps) {
                         <span className="muted-copy">{item.permitStatus ?? "No permit status"}</span>
                       </div>
                     </td>
+                    <td>{item.locationConfidence}</td>
                     <td>{item.sourceCount}</td>
                     <td>{item.addressCount}</td>
                     <td>

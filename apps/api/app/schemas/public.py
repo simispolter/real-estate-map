@@ -57,6 +57,7 @@ class ProjectListItem(BaseModel):
     location_confidence: str
     location_quality: str
     display_geometry_type: str = "unknown"
+    geometry_is_manual: bool = False
     address_summary: str | None = None
     sell_through_rate: Decimal | None = None
 
@@ -104,6 +105,8 @@ class ProjectDisplayGeometryResponse(BaseModel):
     note: str | None = None
     city_only: bool = False
     has_coordinates: bool = False
+    is_manual_override: bool = False
+    is_source_derived: bool = False
 
 
 class ProjectSnapshotDetail(BaseModel):
@@ -143,8 +146,12 @@ class ProjectAddressResponse(BaseModel):
     location_confidence: str
     location_quality: str
     geometry_source: str = "unknown"
+    normalized_display_address: str | None = None
+    is_geocoding_ready: bool = False
     geocoding_status: str = "not_started"
+    geocoding_method: str | None = None
     geocoding_provider: str | None = None
+    geocoding_source_label: str | None = None
     geocoding_note: str | None = None
     is_primary: bool
     value_origin_type: str = "unknown"
@@ -269,24 +276,43 @@ class FiltersMetadataResponse(BaseModel):
     government_program_types: list[str] = Field(default_factory=list)
     project_urban_renewal_types: list[str] = Field(default_factory=list)
     permit_statuses: list[str] = Field(default_factory=list)
+    location_confidences: list[str] = Field(default_factory=list)
 
 
 class MapProjectProperties(BaseModel):
     project_id: UUID
     canonical_name: str
+    company_id: UUID
     company_name: str
     city: str | None = None
+    neighborhood: str | None = None
     project_business_type: str
+    government_program_type: str
+    project_urban_renewal_type: str
     project_status: str | None = None
+    permit_status: str | None = None
+    total_units: int | None = None
+    marketed_units: int | None = None
+    sold_units_cumulative: int | None = None
     avg_price_per_sqm_cumulative: Decimal | None = None
     unsold_units: int | None = None
+    gross_profit_total_expected: Decimal | None = None
+    gross_margin_expected_pct: Decimal | None = None
+    latest_snapshot_date: date | None = None
     geometry_type: str
     geometry_source: str
     location_confidence: str
     location_quality: str
     address_summary: str | None = None
+    center_lat: Decimal | None = None
+    center_lng: Decimal | None = None
     city_only: bool = False
     has_coordinates: bool = False
+    geometry_is_manual: bool = False
+    is_source_derived: bool = False
+    reported_count: int = 0
+    inferred_count: int = 0
+    manual_count: int = 0
 
 
 class GeoJsonFeature(BaseModel):

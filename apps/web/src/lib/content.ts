@@ -1,17 +1,17 @@
 import type { KpiDefinition } from "@real-estat-map/shared";
 
 export const publicNavigation = [
-  { href: "/", label: "Overview" },
-  { href: "/projects", label: "Projects" },
+  { href: "/projects", label: "Map" },
   { href: "/companies", label: "Companies" },
   { href: "/admin", label: "Admin" },
 ];
 
 export const adminNavigation = [
   { href: "/admin/projects", label: "Projects" },
+  { href: "/admin/projects/location-review", label: "Location Review" },
   { href: "/admin/intake", label: "Intake" },
   { href: "/admin/duplicates", label: "Duplicates" },
-  { href: "/admin/coverage", label: "Coverage" },
+  { href: "/admin/coverage/companies", label: "Coverage" },
   { href: "/admin/ops", label: "Ops" },
   { href: "/admin/anomalies", label: "Anomalies" },
   { href: "/admin/layers", label: "Layers" },

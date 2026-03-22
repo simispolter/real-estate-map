@@ -4,6 +4,9 @@ import type {
   AdminCandidateSummary,
   AdminAnomalyItem,
   AdminCoverageDashboard,
+  AdminCoverageGapItem,
+  AdminCoverageGapsResponse,
+  AdminCoverageReportItem,
   AdminCoverageCompany,
   AdminDuplicateSuggestion,
   AdminExternalLayerDetail,
@@ -16,6 +19,8 @@ import type {
   AdminProjectDetail,
   AdminProjectListItem,
   AdminProjectLinkedCandidateItem,
+  AdminLocationReviewItem,
+  AdminLocationReviewResponse,
   AdminProjectSourceItem,
   AdminReportDetail,
   AdminReportSummary,
@@ -44,6 +49,14 @@ type ApiOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: Record<string, unknown> | null;
   searchParams?: URLSearchParams;
+  cache?: RequestCache;
+  revalidateSeconds?: number | false;
+  logLabel?: string;
+};
+
+type NextFetchOptions = {
+  revalidate?: number;
+  tags?: string[];
 };
 
 function getApiBaseUrl() {
@@ -54,17 +67,85 @@ function getApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 }
 
+function isServerRuntime() {
+  return typeof window === "undefined";
+}
+
+function inferRevalidateSeconds(path: string): number {
+  if (path === "/api/v1/filters/metadata" || path === "/api/v1/map/layers" || path === "/api/v1/map/layers/features") {
+    return 300;
+  }
+  if (path === "/api/v1/map/projects") {
+    return 60;
+  }
+  if (path.startsWith("/api/v1/projects/") || path.startsWith("/api/v1/companies/")) {
+    return 120;
+  }
+  if (path === "/api/v1/projects" || path === "/api/v1/companies") {
+    return 90;
+  }
+  return 60;
+}
+
+function resolveFetchBehavior(path: string, options: ApiOptions): { cache?: RequestCache; next?: NextFetchOptions } {
+  const isReadRequest = (options.method ?? "GET") === "GET" && !options.body;
+  if (!isReadRequest || path.startsWith("/api/v1/admin")) {
+    return { cache: "no-store" };
+  }
+  if (!isServerRuntime()) {
+    return { cache: options.cache ?? "default" };
+  }
+
+  if (options.revalidateSeconds === false) {
+    return { cache: "no-store" };
+  }
+
+  const revalidateSeconds =
+    typeof options.revalidateSeconds === "number" ? options.revalidateSeconds : inferRevalidateSeconds(path);
+  return { next: { revalidate: revalidateSeconds } };
+}
+
+function logServerFetchTiming(label: string, path: string, durationMs: number, ok: boolean) {
+  if (!isServerRuntime()) {
+    return;
+  }
+
+  console.info(`[web-fetch] ${label} path=${path} duration_ms=${durationMs} ok=${ok}`);
+}
+
+export function logServerPageTiming(label: string, startedAt: number, meta?: Record<string, string | number | null | undefined>) {
+  if (!isServerRuntime()) {
+    return;
+  }
+
+  const durationMs = Date.now() - startedAt;
+  const details =
+    meta && Object.keys(meta).length > 0
+      ? ` ${Object.entries(meta)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => `${key}=${String(value)}`)
+          .join(" ")}`
+      : "";
+  console.info(`[web-page] ${label} duration_ms=${durationMs}${details}`);
+}
+
 async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T | null> {
   const query = options.searchParams && options.searchParams.toString() ? `?${options.searchParams.toString()}` : "";
   const apiBaseUrl = getApiBaseUrl();
+  const startedAt = Date.now();
+  const fetchBehavior = resolveFetchBehavior(path, options);
 
   try {
     const response = await fetch(`${apiBaseUrl}${path}${query}`, {
       method: options.method ?? "GET",
       headers: options.body ? { "Content-Type": "application/json" } : undefined,
       body: options.body ? JSON.stringify(options.body) : undefined,
-      cache: "no-store",
+      cache: fetchBehavior.cache,
+      next: fetchBehavior.next,
     });
+    if (options.logLabel) {
+      logServerFetchTiming(options.logLabel, `${path}${query}`, Date.now() - startedAt, response.ok);
+    }
     if (!response.ok) {
       return null;
     }
@@ -73,6 +154,9 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T | 
     }
     return (await response.json()) as T;
   } catch {
+    if (options.logLabel) {
+      logServerFetchTiming(options.logLabel, `${path}${query}`, Date.now() - startedAt, false);
+    }
     return null;
   }
 }
@@ -144,6 +228,7 @@ function mapProjectListItem(item: Record<string, unknown>, index: number): Proje
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
     locationQuality: stringOrNull(item.location_quality) ?? "unknown",
     displayGeometryType: stringOrNull(item.display_geometry_type) ?? "unknown",
+    geometryIsManual: Boolean(item.geometry_is_manual),
     addressSummary: stringOrNull(item.address_summary),
     sellThroughRate: numberOrNull(item.sell_through_rate),
   };
@@ -180,8 +265,12 @@ function mapAddress(item: Record<string, unknown>, index: number): ProjectAddres
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
     locationQuality: stringOrNull(item.location_quality) ?? "unknown",
     geometrySource: stringOrNull(item.geometry_source) ?? "unknown",
+    normalizedDisplayAddress: stringOrNull(item.normalized_display_address),
+    isGeocodingReady: Boolean(item.is_geocoding_ready),
     geocodingStatus: stringOrNull(item.geocoding_status) ?? "not_started",
+    geocodingMethod: stringOrNull(item.geocoding_method),
     geocodingProvider: stringOrNull(item.geocoding_provider),
+    geocodingSourceLabel: stringOrNull(item.geocoding_source_label),
     geocodingNote: stringOrNull(item.geocoding_note),
     isPrimary: Boolean(item.is_primary),
     valueOriginType: stringOrNull(item.value_origin_type) ?? "unknown",
@@ -203,6 +292,8 @@ function mapDisplayGeometry(item: Record<string, unknown>) {
     note: stringOrNull(item.note),
     cityOnly: Boolean(item.city_only),
     hasCoordinates: Boolean(item.has_coordinates),
+    isManualOverride: Boolean(item.is_manual_override),
+    isSourceDerived: Boolean(item.is_source_derived),
   };
 }
 
@@ -486,6 +577,7 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
 export async function getProjects(filters: Record<string, string | undefined>) {
   const response = await apiFetch<{ items?: unknown[]; pagination?: { total?: number } }>("/api/v1/projects", {
     searchParams: buildSearchParams(filters),
+    logLabel: "projects-list",
   });
   const items = safeArray<Record<string, unknown>>(response?.items).map(mapProjectListItem);
   return {
@@ -496,7 +588,9 @@ export async function getProjects(filters: Record<string, string | undefined>) {
 }
 
 export async function getProjectDetail(id: string) {
-  const response = await apiFetch<Record<string, unknown>>(`/api/v1/projects/${id}`);
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/projects/${id}`, {
+    logLabel: "project-detail",
+  });
   if (response === null) {
     return { item: null, state: "error" as DataState };
   }
@@ -505,7 +599,9 @@ export async function getProjectDetail(id: string) {
 }
 
 export async function getProjectHistory(id: string) {
-  const response = await apiFetch<{ snapshots?: unknown[] }>(`/api/v1/projects/${id}/history`);
+  const response = await apiFetch<{ snapshots?: unknown[] }>(`/api/v1/projects/${id}/history`, {
+    logLabel: "project-history",
+  });
   const items: ProjectHistoryItem[] = safeArray<Record<string, unknown>>(response?.snapshots).map((item, index) => ({
     snapshotId: stringOrNull(item.snapshot_id) ?? `snapshot-${index}`,
     snapshotDate: stringOrNull(item.snapshot_date) ?? "",
@@ -534,6 +630,7 @@ export async function getProjectHistory(id: string) {
 export async function getCompanies(filters: Record<string, string | undefined> = {}) {
   const response = await apiFetch<{ items?: unknown[] }>("/api/v1/companies", {
     searchParams: buildSearchParams(filters),
+    logLabel: "companies-list",
   });
   const items: CompanyListItem[] = safeArray<Record<string, unknown>>(response?.items).map((item, index) => ({
     id: stringOrNull(item.id) ?? `company-${index}`,
@@ -554,7 +651,9 @@ export async function getCompanies(filters: Record<string, string | undefined> =
 }
 
 export async function getCompanyDetail(id: string) {
-  const response = await apiFetch<Record<string, unknown>>(`/api/v1/companies/${id}`);
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/companies/${id}`, {
+    logLabel: "company-detail",
+  });
   if (response === null) {
     return { item: null, state: "error" as DataState };
   }
@@ -602,7 +701,9 @@ export async function getCompanyDetail(id: string) {
 }
 
 export async function getFiltersMetadata(): Promise<FiltersMetadata> {
-  const response = await apiFetch<Record<string, unknown>>("/api/v1/filters/metadata");
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/filters/metadata", {
+    logLabel: "filters-metadata",
+  });
   return {
     companies: safeArray<Record<string, unknown>>(response?.companies).map((company) => ({
       id: stringOrNull(company.id),
@@ -613,12 +714,14 @@ export async function getFiltersMetadata(): Promise<FiltersMetadata> {
     governmentProgramTypes: safeArray<string>(response?.government_program_types).filter((value) => typeof value === "string"),
     projectUrbanRenewalTypes: safeArray<string>(response?.project_urban_renewal_types).filter((value) => typeof value === "string"),
     permitStatuses: safeArray<string>(response?.permit_statuses).filter((value) => typeof value === "string"),
+    locationConfidences: safeArray<string>(response?.location_confidences).filter((value) => typeof value === "string"),
   };
 }
 
 export async function getMapProjects(filters: Record<string, string | undefined>) {
   const response = await apiFetch<Record<string, unknown>>("/api/v1/map/projects", {
     searchParams: buildSearchParams(filters),
+    logLabel: "map-projects",
   });
   const features = safeArray<Record<string, unknown>>(response?.features).map((feature, index) => {
     const geometry = safeObject(feature.geometry);
@@ -637,19 +740,37 @@ export async function getMapProjects(filters: Record<string, string | undefined>
       properties: {
         projectId: stringOrNull(properties.project_id) ?? `map-project-${index}`,
         canonicalName: stringOrNull(properties.canonical_name) ?? "Unnamed project",
+        companyId: stringOrNull(properties.company_id) ?? "unknown-company",
         companyName: stringOrNull(properties.company_name) ?? "Unknown company",
         city: stringOrNull(properties.city),
+        neighborhood: stringOrNull(properties.neighborhood),
         projectBusinessType: stringOrNull(properties.project_business_type) ?? "unknown",
+        governmentProgramType: stringOrNull(properties.government_program_type) ?? "none",
+        projectUrbanRenewalType: stringOrNull(properties.project_urban_renewal_type) ?? "none",
         projectStatus: stringOrNull(properties.project_status),
+        permitStatus: stringOrNull(properties.permit_status),
+        totalUnits: numberOrNull(properties.total_units),
+        marketedUnits: numberOrNull(properties.marketed_units),
+        soldUnitsCumulative: numberOrNull(properties.sold_units_cumulative),
         avgPricePerSqmCumulative: numberOrNull(properties.avg_price_per_sqm_cumulative),
         unsoldUnits: numberOrNull(properties.unsold_units),
+        grossProfitTotalExpected: numberOrNull(properties.gross_profit_total_expected),
+        grossMarginExpectedPct: numberOrNull(properties.gross_margin_expected_pct),
+        latestSnapshotDate: stringOrNull(properties.latest_snapshot_date),
         locationConfidence: stringOrNull(properties.location_confidence) ?? "unknown",
         locationQuality: stringOrNull(properties.location_quality) ?? "unknown",
         geometryType: stringOrNull(properties.geometry_type) ?? "unknown",
         geometrySource: stringOrNull(properties.geometry_source) ?? "unknown",
         addressSummary: stringOrNull(properties.address_summary),
+        centerLat: numberOrNull(properties.center_lat),
+        centerLng: numberOrNull(properties.center_lng),
         cityOnly: Boolean(properties.city_only),
         hasCoordinates: Boolean(properties.has_coordinates),
+        geometryIsManual: Boolean(properties.geometry_is_manual),
+        isSourceDerived: Boolean(properties.is_source_derived),
+        reportedCount: numberOrNull(properties.reported_count) ?? 0,
+        inferredCount: numberOrNull(properties.inferred_count) ?? 0,
+        manualCount: numberOrNull(properties.manual_count) ?? 0,
       },
     };
   });
@@ -675,7 +796,9 @@ export async function getMapProjects(filters: Record<string, string | undefined>
 }
 
 export async function getMapLayers() {
-  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/map/layers");
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/map/layers", {
+    logLabel: "map-layers",
+  });
   const items = safeArray<Record<string, unknown>>(response?.items).map(mapExternalLayerSummary);
   return {
     items,
@@ -690,6 +813,7 @@ export async function getMapExternalLayers(layerIds: string[], filters: Record<s
   }
   const response = await apiFetch<Record<string, unknown>>("/api/v1/map/layers/features", {
     searchParams,
+    logLabel: "map-external-layers",
   });
   const features = safeArray<Record<string, unknown>>(response?.features).map((feature, index) => {
     const geometry = safeObject(feature.geometry);
@@ -1240,16 +1364,100 @@ function mapCoverageCompany(item: Record<string, unknown>, index: number): Admin
   return {
     companyId: stringOrNull(item.company_id) ?? `coverage-${index}`,
     companyNameHe: stringOrNull(item.company_name_he) ?? "Unknown company",
+    isActive: typeof item.is_active === "boolean" ? item.is_active : true,
     isInScope: Boolean(item.is_in_scope),
     outOfScopeReason: stringOrNull(item.out_of_scope_reason),
     coveragePriority: stringOrNull(item.coverage_priority) ?? "medium",
+    latestReportRegisteredId: stringOrNull(item.latest_report_registered_id),
+    latestReportRegisteredName: stringOrNull(item.latest_report_registered_name),
+    latestReportPublished: stringOrNull(item.latest_report_published),
     latestReportIngestedId: stringOrNull(item.latest_report_ingested_id),
-    latestReportName: stringOrNull(item.latest_report_name),
+    latestReportIngestedName: stringOrNull(item.latest_report_ingested_name),
+    historicalCoverageStart: stringOrNull(item.historical_coverage_start),
+    historicalCoverageEnd: stringOrNull(item.historical_coverage_end),
     historicalCoverageStatus: stringOrNull(item.historical_coverage_status) ?? "not_started",
+    backfillStatus: stringOrNull(item.backfill_status) ?? "not_started",
     reportsRegistered: numberOrNull(item.reports_registered) ?? 0,
+    reportsPublishedIntoCanonical: numberOrNull(item.reports_published_into_canonical) ?? 0,
     projectsCreated: numberOrNull(item.projects_created) ?? 0,
     snapshotsCreated: numberOrNull(item.snapshots_created) ?? 0,
+    projectsMissingKeyFields: numberOrNull(item.projects_missing_key_fields) ?? 0,
+    projectsCityOnlyLocation: numberOrNull(item.projects_city_only_location) ?? 0,
+    projectsWithExactOrApproximateGeometry:
+      numberOrNull(item.projects_with_exact_or_approximate_geometry) ?? 0,
     notes: stringOrNull(item.notes),
+  };
+}
+
+function mapAdminCoverageReport(item: Record<string, unknown>, index: number): AdminCoverageReportItem {
+  return {
+    reportId: stringOrNull(item.report_id) ?? `coverage-report-${index}`,
+    companyId: stringOrNull(item.company_id) ?? "",
+    companyNameHe: stringOrNull(item.company_name_he) ?? "Unknown company",
+    reportName: stringOrNull(item.report_name),
+    reportType: stringOrNull(item.report_type) ?? "unknown",
+    periodType: stringOrNull(item.period_type) ?? "unknown",
+    periodEndDate: stringOrNull(item.period_end_date) ?? "",
+    publishedAt: stringOrNull(item.published_at),
+    isInScope: typeof item.is_in_scope === "boolean" ? item.is_in_scope : true,
+    sourceIsOfficial: typeof item.source_is_official === "boolean" ? item.source_is_official : false,
+    sourceLabel: stringOrNull(item.source_label),
+    sourceUrl: stringOrNull(item.source_url),
+    ingestionStatus: stringOrNull(item.ingestion_status) ?? "draft",
+    linkedProjectCount: numberOrNull(item.linked_project_count) ?? 0,
+    linkedSnapshotCount: numberOrNull(item.linked_snapshot_count) ?? 0,
+    isPublishedIntoCanonical: Boolean(item.is_published_into_canonical),
+    isLatestRegistered: Boolean(item.is_latest_registered),
+    isLatestIngested: Boolean(item.is_latest_ingested),
+  };
+}
+
+function mapAdminCoverageGap(item: Record<string, unknown>, index: number): AdminCoverageGapItem {
+  return {
+    projectId: stringOrNull(item.project_id) ?? `gap-${index}`,
+    projectName: stringOrNull(item.project_name) ?? "Unknown project",
+    companyId: stringOrNull(item.company_id) ?? "",
+    companyNameHe: stringOrNull(item.company_name_he) ?? "Unknown company",
+    city: stringOrNull(item.city),
+    locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
+    locationQuality: stringOrNull(item.location_quality) ?? "unknown",
+    latestSnapshotDate: stringOrNull(item.latest_snapshot_date),
+    latestSnapshotAgeDays: numberOrNull(item.latest_snapshot_age_days),
+    missingFields: safeArray<string>(item.missing_fields).filter((value) => typeof value === "string"),
+    sourceCount: numberOrNull(item.source_count) ?? 0,
+    addressCount: numberOrNull(item.address_count) ?? 0,
+    isPubliclyVisible: Boolean(item.is_publicly_visible),
+    backfillStatus: stringOrNull(item.backfill_status) ?? "not_started",
+  };
+}
+
+function mapAdminLocationReviewItem(item: Record<string, unknown>, index: number): AdminLocationReviewItem {
+  const company = safeObject(item.company);
+  return {
+    projectId: stringOrNull(item.project_id) ?? `location-${index}`,
+    projectName: stringOrNull(item.project_name) ?? "Unknown project",
+    company: {
+      id: stringOrNull(company.id) ?? "",
+      nameHe: stringOrNull(company.name_he) ?? "Unknown company",
+    },
+    city: stringOrNull(item.city),
+    neighborhood: stringOrNull(item.neighborhood),
+    locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
+    locationQuality: stringOrNull(item.location_quality) ?? "unknown",
+    geometryType: stringOrNull(item.geometry_type) ?? "unknown",
+    geometrySource: stringOrNull(item.geometry_source) ?? "unknown",
+    geometryIsManual: Boolean(item.geometry_is_manual),
+    addressCount: numberOrNull(item.address_count) ?? 0,
+    primaryAddressId: stringOrNull(item.primary_address_id),
+    primaryAddressSummary: stringOrNull(item.primary_address_summary),
+    geocodingStatus: stringOrNull(item.geocoding_status),
+    geocodingMethod: stringOrNull(item.geocoding_method),
+    geocodingSourceLabel: stringOrNull(item.geocoding_source_label),
+    isGeocodingReady: Boolean(item.is_geocoding_ready),
+    latestSnapshotDate: stringOrNull(item.latest_snapshot_date),
+    latestSnapshotAgeDays: numberOrNull(item.latest_snapshot_age_days),
+    backfillStatus: stringOrNull(item.backfill_status) ?? "not_started",
+    missingLocationFields: safeArray<string>(item.missing_location_fields).filter((value) => typeof value === "string"),
   };
 }
 
@@ -1302,17 +1510,96 @@ export async function getAdminCoverage() {
   const item: AdminCoverageDashboard = {
     summary: {
       companiesInScope: numberOrNull(summary.companies_in_scope) ?? 0,
+      companiesWithLatestReportIngested: numberOrNull(summary.companies_with_latest_report_ingested) ?? 0,
+      companiesMissingLatestReport: numberOrNull(summary.companies_missing_latest_report) ?? 0,
       reportsRegistered: numberOrNull(summary.reports_registered) ?? 0,
+      reportsPublishedIntoCanonical: numberOrNull(summary.reports_published_into_canonical) ?? 0,
       projectsCreated: numberOrNull(summary.projects_created) ?? 0,
       snapshotsCreated: numberOrNull(summary.snapshots_created) ?? 0,
       unmatchedCandidates: numberOrNull(summary.unmatched_candidates) ?? 0,
       ambiguousCandidates: numberOrNull(summary.ambiguous_candidates) ?? 0,
       projectsMissingKeyFields: numberOrNull(summary.projects_missing_key_fields) ?? 0,
-      projectsMissingPreciseLocation: numberOrNull(summary.projects_missing_precise_location) ?? 0,
+      projectsCityOnlyLocation: numberOrNull(summary.projects_city_only_location) ?? 0,
+      projectsWithExactOrApproximateGeometry:
+        numberOrNull(summary.projects_with_exact_or_approximate_geometry) ?? 0,
     },
+    fieldCompleteness: safeArray<Record<string, unknown>>(response.field_completeness).map((item, index) => ({
+      fieldName: stringOrNull(item.field_name) ?? `field-${index}`,
+      completeCount: numberOrNull(item.complete_count) ?? 0,
+      missingCount: numberOrNull(item.missing_count) ?? 0,
+    })),
     companies: safeArray<Record<string, unknown>>(response.companies).map(mapCoverageCompany),
   };
   return { item, state: "ready" as DataState };
+}
+
+export async function getAdminCoverageReports(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<{ items?: unknown[] }>("/api/v1/admin/coverage/reports", {
+    searchParams: buildSearchParams(filters),
+  });
+  const items = safeArray<Record<string, unknown>>(response?.items).map(mapAdminCoverageReport);
+  return {
+    items,
+    state: response === null ? ("error" as DataState) : items.length > 0 ? ("ready" as DataState) : ("empty" as DataState),
+  };
+}
+
+export async function getAdminCoverageGaps(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/coverage/gaps", {
+    searchParams: buildSearchParams(filters),
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const summary = safeObject(response.summary);
+  const item: AdminCoverageGapsResponse = {
+    summary: {
+      totalItems: numberOrNull(summary.total_items) ?? 0,
+      missingLocation: numberOrNull(summary.missing_location) ?? 0,
+      missingMetrics: numberOrNull(summary.missing_metrics) ?? 0,
+      staleOrMissingSnapshot: numberOrNull(summary.stale_or_missing_snapshot) ?? 0,
+    },
+    items: safeArray<Record<string, unknown>>(response.items).map(mapAdminCoverageGap),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function getAdminLocationReview(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/location-review/projects", {
+    searchParams: buildSearchParams(filters),
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const summary = safeObject(response.summary);
+  const item: AdminLocationReviewResponse = {
+    summary: {
+      totalItems: numberOrNull(summary.total_items) ?? 0,
+      cityOnly: numberOrNull(summary.city_only) ?? 0,
+      unknown: numberOrNull(summary.unknown) ?? 0,
+      manualGeometry: numberOrNull(summary.manual_geometry) ?? 0,
+      geocodingReady: numberOrNull(summary.geocoding_ready) ?? 0,
+    },
+    items: safeArray<Record<string, unknown>>(response.items).map(mapAdminLocationReviewItem),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function applyAdminCoverageBulk(payload: Record<string, unknown>) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/coverage/bulk", {
+    method: "POST",
+    body: payload,
+  });
+  return {
+    item: response
+      ? {
+          appliedCount: numberOrNull(response.applied_count) ?? 0,
+          targetType: stringOrNull(response.target_type) ?? "company",
+          action: stringOrNull(response.action) ?? "set_scope",
+        }
+      : null,
+    state: response === null ? ("error" as DataState) : ("ready" as DataState),
+  };
 }
 
 export async function getAdminAnomalies() {

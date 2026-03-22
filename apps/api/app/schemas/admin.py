@@ -184,6 +184,9 @@ class AdminAddressUpsertRequest(BaseModel):
     lng: float | None = None
     location_confidence: str = "city_only"
     is_primary: bool = False
+    normalized_display_address: str | None = None
+    geocoding_method: str | None = None
+    geocoding_source_label: str | None = None
     value_origin_type: str = "reported"
     change_reason: str | None = None
 
@@ -288,41 +291,176 @@ class AdminMergeProjectsRequest(BaseModel):
 class AdminCoverageCompanyItem(BaseModel):
     company_id: UUID
     company_name_he: str
+    is_active: bool = True
     is_in_scope: bool
     out_of_scope_reason: str | None = None
     coverage_priority: str
+    latest_report_registered_id: UUID | None = None
+    latest_report_registered_name: str | None = None
+    latest_report_published: date | None = None
     latest_report_ingested_id: UUID | None = None
-    latest_report_name: str | None = None
+    latest_report_ingested_name: str | None = None
+    historical_coverage_start: date | None = None
+    historical_coverage_end: date | None = None
     historical_coverage_status: str
+    backfill_status: str = "not_started"
     reports_registered: int = 0
+    reports_published_into_canonical: int = 0
     projects_created: int = 0
     snapshots_created: int = 0
+    projects_missing_key_fields: int = 0
+    projects_city_only_location: int = 0
+    projects_with_exact_or_approximate_geometry: int = 0
     notes: str | None = None
+
+
+class AdminFieldCompletenessItem(BaseModel):
+    field_name: str
+    complete_count: int = 0
+    missing_count: int = 0
 
 
 class AdminCoverageSummary(BaseModel):
     companies_in_scope: int = 0
+    companies_with_latest_report_ingested: int = 0
+    companies_missing_latest_report: int = 0
     reports_registered: int = 0
+    reports_published_into_canonical: int = 0
     projects_created: int = 0
     snapshots_created: int = 0
     unmatched_candidates: int = 0
     ambiguous_candidates: int = 0
     projects_missing_key_fields: int = 0
-    projects_missing_precise_location: int = 0
+    projects_city_only_location: int = 0
+    projects_with_exact_or_approximate_geometry: int = 0
 
 
 class AdminCoverageDashboardResponse(BaseModel):
     summary: AdminCoverageSummary
+    field_completeness: list[AdminFieldCompletenessItem] = Field(default_factory=list)
     companies: list[AdminCoverageCompanyItem] = Field(default_factory=list)
 
 
 class AdminCoverageUpdateRequest(BaseModel):
+    is_active: bool | None = None
     is_in_scope: bool | None = None
     out_of_scope_reason: str | None = None
     coverage_priority: str | None = None
+    latest_report_registered_id: UUID | None = None
     latest_report_ingested_id: UUID | None = None
+    latest_report_published_date: date | None = None
+    historical_coverage_start: date | None = None
+    historical_coverage_end: date | None = None
     historical_coverage_status: str | None = None
+    backfill_status: str | None = None
     notes: str | None = None
+    change_reason: str | None = None
+
+
+class AdminCoverageReportItem(BaseModel):
+    report_id: UUID
+    company_id: UUID
+    company_name_he: str
+    report_name: str | None = None
+    report_type: str
+    period_type: str
+    period_end_date: date
+    published_at: date | None = None
+    is_in_scope: bool = True
+    source_is_official: bool = False
+    source_label: str | None = None
+    source_url: str | None = None
+    ingestion_status: str
+    linked_project_count: int = 0
+    linked_snapshot_count: int = 0
+    is_published_into_canonical: bool = False
+    is_latest_registered: bool = False
+    is_latest_ingested: bool = False
+
+
+class AdminCoverageReportsResponse(BaseModel):
+    items: list[AdminCoverageReportItem] = Field(default_factory=list)
+
+
+class AdminCoverageGapSummary(BaseModel):
+    total_items: int = 0
+    missing_location: int = 0
+    missing_metrics: int = 0
+    stale_or_missing_snapshot: int = 0
+
+
+class AdminCoverageGapItem(BaseModel):
+    project_id: UUID
+    project_name: str
+    company_id: UUID
+    company_name_he: str
+    city: str | None = None
+    location_confidence: str
+    location_quality: str
+    latest_snapshot_date: date | None = None
+    latest_snapshot_age_days: int | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    source_count: int = 0
+    address_count: int = 0
+    is_publicly_visible: bool = False
+    backfill_status: str = "not_started"
+
+
+class AdminCoverageGapsResponse(BaseModel):
+    summary: AdminCoverageGapSummary
+    items: list[AdminCoverageGapItem] = Field(default_factory=list)
+
+
+class AdminCoverageBulkRequest(BaseModel):
+    target_type: str
+    action: str
+    ids: list[UUID] = Field(default_factory=list)
+    is_in_scope: bool | None = None
+    backfill_status: str | None = None
+    note: str | None = None
+
+
+class AdminCoverageBulkResponse(BaseModel):
+    applied_count: int = 0
+    target_type: str
+    action: str
+
+
+class AdminLocationReviewSummary(BaseModel):
+    total_items: int = 0
+    city_only: int = 0
+    unknown: int = 0
+    manual_geometry: int = 0
+    geocoding_ready: int = 0
+
+
+class AdminLocationReviewItem(BaseModel):
+    project_id: UUID
+    project_name: str
+    company: ProjectCompanySummary
+    city: str | None = None
+    neighborhood: str | None = None
+    location_confidence: str
+    location_quality: str
+    geometry_type: str
+    geometry_source: str
+    geometry_is_manual: bool = False
+    address_count: int = 0
+    primary_address_id: UUID | None = None
+    primary_address_summary: str | None = None
+    geocoding_status: str | None = None
+    geocoding_method: str | None = None
+    geocoding_source_label: str | None = None
+    is_geocoding_ready: bool = False
+    latest_snapshot_date: date | None = None
+    latest_snapshot_age_days: int | None = None
+    backfill_status: str = "not_started"
+    missing_location_fields: list[str] = Field(default_factory=list)
+
+
+class AdminLocationReviewResponse(BaseModel):
+    summary: AdminLocationReviewSummary
+    items: list[AdminLocationReviewItem] = Field(default_factory=list)
 
 
 class AdminAnomalyItem(BaseModel):

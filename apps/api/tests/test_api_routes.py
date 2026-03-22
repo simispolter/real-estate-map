@@ -250,6 +250,7 @@ def test_filters_metadata_route(monkeypatch):
             "government_program_types": ["none"],
             "project_urban_renewal_types": ["none"],
             "permit_statuses": ["pending"],
+            "location_confidences": ["city_only", "approximate"],
         }
 
     monkeypatch.setattr(filter_endpoints, "get_filter_metadata", fake_get_filter_metadata)
@@ -262,6 +263,7 @@ def test_filters_metadata_route(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["cities"] == ["Tel Aviv"]
+    assert response.json()["location_confidences"] == ["city_only", "approximate"]
 
 
 def test_map_projects_route(monkeypatch):
@@ -274,19 +276,37 @@ def test_map_projects_route(monkeypatch):
                     "properties": {
                         "project_id": PROJECT_ID,
                         "canonical_name": "Test Project",
+                        "company_id": COMPANY_ID,
                         "company_name": "Test Company",
                         "city": "Tel Aviv",
+                        "neighborhood": None,
                         "project_business_type": "regular_dev",
+                        "government_program_type": "none",
+                        "project_urban_renewal_type": "none",
                         "project_status": "marketing",
+                        "permit_status": "pending",
+                        "total_units": 120,
+                        "marketed_units": 80,
+                        "sold_units_cumulative": 60,
                         "avg_price_per_sqm_cumulative": "32000.00",
                         "unsold_units": 20,
+                        "gross_profit_total_expected": "125000000.00",
+                        "gross_margin_expected_pct": "18.50",
+                        "latest_snapshot_date": "2025-09-30",
                         "location_confidence": "approximate",
                         "location_quality": "approximate",
                         "geometry_type": "approximate_point",
                         "geometry_source": "reported",
                         "address_summary": "Main Street 10, Tel Aviv",
+                        "center_lat": "32.1000",
+                        "center_lng": "34.8000",
                         "city_only": False,
                         "has_coordinates": True,
+                        "geometry_is_manual": False,
+                        "is_source_derived": True,
+                        "reported_count": 4,
+                        "inferred_count": 1,
+                        "manual_count": 0,
                     },
                 }
             ],
@@ -309,6 +329,7 @@ def test_map_projects_route(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["meta"]["projects_with_coordinates"] == 1
+    assert response.json()["features"][0]["properties"]["reported_count"] == 4
 
 
 def test_map_layers_route(monkeypatch):
@@ -464,37 +485,53 @@ def test_admin_duplicates_route(monkeypatch):
 
 
 def test_admin_coverage_route(monkeypatch):
-    async def fake_get_admin_coverage_dashboard(_session):
+    async def fake_get_coverage_dashboard(_session):
         return {
             "summary": {
                 "companies_in_scope": 5,
+                "companies_with_latest_report_ingested": 3,
+                "companies_missing_latest_report": 2,
                 "reports_registered": 7,
+                "reports_published_into_canonical": 5,
                 "projects_created": 18,
                 "snapshots_created": 24,
                 "unmatched_candidates": 2,
                 "ambiguous_candidates": 1,
                 "projects_missing_key_fields": 3,
-                "projects_missing_precise_location": 11,
+                "projects_city_only_location": 11,
+                "projects_with_exact_or_approximate_geometry": 7,
             },
+            "field_completeness": [],
             "companies": [
                 {
                     "company_id": COMPANY_ID,
                     "company_name_he": "Test Company",
+                    "is_active": True,
                     "is_in_scope": True,
                     "out_of_scope_reason": None,
                     "coverage_priority": "high",
+                    "latest_report_registered_id": None,
+                    "latest_report_registered_name": "Q3 2025",
+                    "latest_report_published": "2025-11-20",
                     "latest_report_ingested_id": None,
-                    "latest_report_name": "Q3 2025",
+                    "latest_report_ingested_name": "Q3 2025",
+                    "historical_coverage_start": "2024-12-31",
+                    "historical_coverage_end": "2025-09-30",
                     "historical_coverage_status": "partial",
+                    "backfill_status": "historical_backfill",
                     "reports_registered": 2,
+                    "reports_published_into_canonical": 1,
                     "projects_created": 3,
                     "snapshots_created": 4,
+                    "projects_missing_key_fields": 1,
+                    "projects_city_only_location": 2,
+                    "projects_with_exact_or_approximate_geometry": 1,
                     "notes": "Backfill in progress",
                 }
             ],
         }
 
-    monkeypatch.setattr(admin_endpoints, "get_admin_coverage_dashboard", fake_get_admin_coverage_dashboard)
+    monkeypatch.setattr(admin_endpoints, "get_coverage_dashboard", fake_get_coverage_dashboard)
     app.dependency_overrides[get_db_session] = _override_db
 
     with TestClient(app) as client:
@@ -506,6 +543,164 @@ def test_admin_coverage_route(monkeypatch):
     payload = response.json()
     assert payload["summary"]["companies_in_scope"] == 5
     assert payload["companies"][0]["coverage_priority"] == "high"
+
+
+def test_admin_coverage_reports_route(monkeypatch):
+    async def fake_list_coverage_reports(_session, _filters):
+        return [
+            {
+                "report_id": str(uuid4()),
+                "company_id": COMPANY_ID,
+                "company_name_he": "Test Company",
+                "report_name": "Q3 2025",
+                "report_type": "q3",
+                "period_type": "quarterly",
+                "period_end_date": "2025-09-30",
+                "published_at": "2025-11-20",
+                "is_in_scope": True,
+                "source_is_official": True,
+                "source_label": "Official IR",
+                "source_url": "https://example.com/report.pdf",
+                "ingestion_status": "published",
+                "linked_project_count": 2,
+                "linked_snapshot_count": 3,
+                "is_published_into_canonical": True,
+                "is_latest_registered": True,
+                "is_latest_ingested": True,
+            }
+        ]
+
+    monkeypatch.setattr(admin_endpoints, "list_coverage_reports", fake_list_coverage_reports)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/coverage/reports")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["linked_project_count"] == 2
+    assert payload["items"][0]["is_published_into_canonical"] is True
+
+
+def test_admin_coverage_gaps_route(monkeypatch):
+    async def fake_list_coverage_gaps(_session, _filters):
+        return {
+            "summary": {
+                "total_items": 1,
+                "missing_location": 1,
+                "missing_metrics": 1,
+                "stale_or_missing_snapshot": 1,
+            },
+            "items": [
+                {
+                    "project_id": PROJECT_ID,
+                    "project_name": "Test Project",
+                    "company_id": COMPANY_ID,
+                    "company_name_he": "Test Company",
+                    "city": "Tel Aviv",
+                    "location_confidence": "city_only",
+                    "location_quality": "city-only",
+                    "latest_snapshot_date": "2025-09-30",
+                    "latest_snapshot_age_days": 120,
+                    "missing_fields": ["avg_price_per_sqm_cumulative"],
+                    "source_count": 2,
+                    "address_count": 1,
+                    "is_publicly_visible": True,
+                    "backfill_status": "historical_backfill",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(admin_endpoints, "list_coverage_gaps", fake_list_coverage_gaps)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/coverage/gaps")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["missing_location"] == 1
+    assert payload["items"][0]["backfill_status"] == "historical_backfill"
+
+
+def test_admin_location_review_route(monkeypatch):
+    async def fake_list_location_review_projects(_session, _filters):
+        return {
+            "summary": {
+                "total_items": 1,
+                "city_only": 1,
+                "unknown": 0,
+                "manual_geometry": 0,
+                "geocoding_ready": 1,
+            },
+            "items": [
+                {
+                    "project_id": PROJECT_ID,
+                    "project_name": "Test Project",
+                    "company": {"id": COMPANY_ID, "name_he": "Test Company"},
+                    "city": "Tel Aviv",
+                    "neighborhood": None,
+                    "location_confidence": "city_only",
+                    "location_quality": "city-only",
+                    "geometry_type": "city_centroid",
+                    "geometry_source": "city_registry",
+                    "geometry_is_manual": False,
+                    "address_count": 1,
+                    "primary_address_id": ADDRESS_ID,
+                    "primary_address_summary": "Main Street 10, Tel Aviv",
+                    "geocoding_status": "normalized",
+                    "geocoding_method": "address_text",
+                    "geocoding_source_label": "Address normalization",
+                    "is_geocoding_ready": True,
+                    "latest_snapshot_date": "2025-09-30",
+                    "latest_snapshot_age_days": 120,
+                    "backfill_status": "historical_backfill",
+                    "missing_location_fields": ["neighborhood"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(admin_endpoints, "list_location_review_projects", fake_list_location_review_projects)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/location-review/projects")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["geocoding_ready"] == 1
+    assert payload["items"][0]["primary_address_id"] == ADDRESS_ID
+
+
+def test_admin_coverage_bulk_route(monkeypatch):
+    async def fake_apply_coverage_bulk_action(_session, _payload):
+        return {"applied_count": 2, "target_type": "company", "action": "set_scope"}
+
+    monkeypatch.setattr(admin_endpoints, "apply_coverage_bulk_action", fake_apply_coverage_bulk_action)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/admin/coverage/bulk",
+            json={
+                "target_type": "company",
+                "action": "set_scope",
+                "ids": [COMPANY_ID, str(uuid4())],
+                "is_in_scope": True,
+            },
+        )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["applied_count"] == 2
 
 
 def test_admin_anomalies_route(monkeypatch):

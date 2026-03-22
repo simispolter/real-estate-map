@@ -55,6 +55,9 @@ def _point_geojson(lat: float | Decimal, lng: float | Decimal) -> dict[str, Any]
 
 
 def build_address_summary(address: ProjectAddress) -> str:
+    if address.normalized_display_address:
+        return address.normalized_display_address
+
     parts = [address.normalized_street or address.street, address.city]
     if address.house_number_from is not None:
         if address.house_number_to and address.house_number_to != address.house_number_from:
@@ -65,7 +68,7 @@ def build_address_summary(address: ProjectAddress) -> str:
     return summary or address.normalized_address_text or address.address_text_raw or "Unknown address"
 
 
-def normalize_address_record(address: ProjectAddress) -> dict[str, str | None]:
+def normalize_address_record(address: ProjectAddress) -> dict[str, str | bool | None]:
     normalized_street = _normalize_part(address.street)
     normalized_city = _normalize_part(address.city)
     address_bits = [normalized_street]
@@ -81,11 +84,17 @@ def normalize_address_record(address: ProjectAddress) -> dict[str, str | None]:
     if not normalized_address_text:
         normalized_address_text = _normalize_part(address.address_text_raw)
 
+    normalized_display_address = normalized_address_text or " ".join(
+        bit for bit in [normalized_street, normalized_city] if bit
+    )
+
     return {
         "normalized_address_text": normalized_address_text,
+        "normalized_display_address": normalized_display_address,
         "normalized_street": normalized_street,
         "normalized_city": normalized_city,
         "geocoding_query": normalized_address_text or normalized_city,
+        "is_geocoding_ready": bool(normalized_city and (normalized_street or address.address_text_raw)),
     }
 
 
@@ -132,6 +141,7 @@ def serialize_display_geometry(project: ProjectMaster) -> dict[str, Any]:
     geometry = project.display_geometry_geojson
     city_only = project.display_geometry_confidence == "city_only"
     has_coordinates = project.display_center_lat is not None and project.display_center_lng is not None
+    is_manual_override = project.display_geometry_source == "manual_override"
     return {
         "geometry_type": project.display_geometry_type,
         "geometry_source": project.display_geometry_source,
@@ -144,6 +154,8 @@ def serialize_display_geometry(project: ProjectMaster) -> dict[str, Any]:
         "note": project.display_geometry_note,
         "city_only": city_only,
         "has_coordinates": has_coordinates,
+        "is_manual_override": is_manual_override,
+        "is_source_derived": not is_manual_override and project.display_geometry_source in {"reported", "city_registry"},
     }
 
 
@@ -168,6 +180,8 @@ def resolved_display_geometry(project: ProjectMaster) -> dict[str, Any]:
             "note": "Derived at read time from the city centroid registry.",
             "city_only": True,
             "has_coordinates": True,
+            "is_manual_override": False,
+            "is_source_derived": True,
         }
 
     return serialize_display_geometry(project)
@@ -258,10 +272,14 @@ async def normalize_project_address(
 ) -> None:
     normalized = normalize_address_record(address)
     address.normalized_address_text = normalized["normalized_address_text"]
+    address.normalized_display_address = normalized["normalized_display_address"]
     address.normalized_street = normalized["normalized_street"]
     address.normalized_city = normalized["normalized_city"]
     address.geocoding_query = normalized["geocoding_query"]
+    address.is_geocoding_ready = bool(normalized["is_geocoding_ready"])
     address.geocoding_status = "normalized"
+    address.geocoding_method = "address_text"
+    address.geocoding_source_label = "Address normalization"
     address.assigned_by = admin_user.id
     address.assigned_at = datetime.now(UTC)
     if address.location_confidence not in {"exact", "approximate", "city_only", "unknown"}:
@@ -271,6 +289,7 @@ async def normalize_project_address(
         address.city = project.city
         address.normalized_city = _normalize_part(project.city)
         address.geocoding_query = normalize_address_record(address)["geocoding_query"]
+        address.is_geocoding_ready = bool(address.geocoding_query)
 
 
 async def geocode_project_address(
@@ -288,12 +307,16 @@ async def geocode_project_address(
         address.location_confidence = infer_geocoded_confidence(address)
         address.geometry_source = "geocoded"
         address.geocoding_status = "geocoded"
+        address.geocoding_method = "address_text"
         address.geocoding_provider = result["provider"]
+        address.geocoding_source_label = "Nominatim OpenStreetMap"
         address.geocoded_at = datetime.now(UTC)
         address.geocoding_note = result["display_name"]
     else:
         address.geocoding_status = "failed"
+        address.geocoding_method = "address_text"
         address.geocoding_provider = "nominatim"
+        address.geocoding_source_label = "Nominatim OpenStreetMap"
         address.geocoding_note = "No address-level geocode result returned."
 
     await sync_project_display_geometry_from_addresses(session, project, force=True)

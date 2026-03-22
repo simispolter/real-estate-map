@@ -108,6 +108,14 @@ historical_coverage_status_enum = pg_enum(
     "current_only",
     "historical_complete",
 )
+coverage_backfill_status_enum = pg_enum(
+    "coverage_backfill_status_enum",
+    "not_started",
+    "current_cycle_only",
+    "historical_backfill",
+    "complete",
+    "blocked",
+)
 snapshot_chronology_status_enum = pg_enum("snapshot_chronology_status_enum", "ok", "out_of_order", "duplicate_date")
 candidate_match_status_enum = pg_enum(
     "candidate_match_status_enum",
@@ -224,6 +232,7 @@ class Report(TimestampMixin, Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     source_file_path: Mapped[str | None] = mapped_column(Text)
     source_is_official: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_in_scope: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     source_label: Mapped[str | None] = mapped_column(Text)
     ingestion_status: Mapped[str] = mapped_column(report_ingestion_status_enum, nullable=False, default="draft")
     notes: Mapped[str | None] = mapped_column(Text)
@@ -323,6 +332,7 @@ class ProjectAddress(TimestampMixin, Base):
     city: Mapped[str | None] = mapped_column(Text)
     postal_code: Mapped[str | None] = mapped_column(Text)
     normalized_address_text: Mapped[str | None] = mapped_column(Text)
+    normalized_display_address: Mapped[str | None] = mapped_column(Text)
     normalized_street: Mapped[str | None] = mapped_column(Text)
     normalized_city: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
@@ -332,8 +342,11 @@ class ProjectAddress(TimestampMixin, Base):
     location_confidence: Mapped[str] = mapped_column(location_confidence_enum, nullable=False, default="unknown")
     source_type: Mapped[str] = mapped_column(address_source_type_enum, nullable=False, default="imported")
     geometry_source: Mapped[str] = mapped_column(geometry_source_enum, nullable=False, default="unknown")
+    is_geocoding_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     geocoding_status: Mapped[str] = mapped_column(geocoding_status_enum, nullable=False, default="not_started")
+    geocoding_method: Mapped[str | None] = mapped_column(Text)
     geocoding_provider: Mapped[str | None] = mapped_column(Text)
+    geocoding_source_label: Mapped[str | None] = mapped_column(Text)
     geocoding_query: Mapped[str | None] = mapped_column(Text)
     geocoded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     geocoding_note: Mapped[str | None] = mapped_column(Text)
@@ -691,15 +704,28 @@ class CompanyCoverageRegistry(TimestampMixin, Base):
         ForeignKey("companies.id", ondelete="CASCADE"),
         primary_key=True,
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_in_scope: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     out_of_scope_reason: Mapped[str | None] = mapped_column(Text)
     coverage_priority: Mapped[str] = mapped_column(coverage_priority_enum, nullable=False, default="medium")
+    latest_report_registered_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
     latest_report_ingested_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("reports.id", ondelete="SET NULL"),
     )
+    latest_report_published_date: Mapped[date | None] = mapped_column(Date)
+    historical_coverage_start: Mapped[date | None] = mapped_column(Date)
+    historical_coverage_end: Mapped[date | None] = mapped_column(Date)
     historical_coverage_status: Mapped[str] = mapped_column(
         historical_coverage_status_enum,
+        nullable=False,
+        default="not_started",
+    )
+    backfill_status: Mapped[str] = mapped_column(
+        coverage_backfill_status_enum,
         nullable=False,
         default="not_started",
     )

@@ -142,6 +142,7 @@ export interface ProjectListItem {
   locationConfidence: LocationConfidence | string;
   locationQuality: string;
   displayGeometryType: string;
+  geometryIsManual: boolean;
   addressSummary: string | null;
   sellThroughRate: number | null;
 }
@@ -158,6 +159,7 @@ export interface FiltersMetadata {
   governmentProgramTypes: string[];
   projectUrbanRenewalTypes: string[];
   permitStatuses: string[];
+  locationConfidences: string[];
 }
 
 export interface ValueTrust {
@@ -180,8 +182,12 @@ export interface ProjectAddress {
   locationConfidence: string;
   locationQuality: string;
   geometrySource: string;
+  normalizedDisplayAddress: string | null;
+  isGeocodingReady: boolean;
   geocodingStatus: string;
+  geocodingMethod: string | null;
   geocodingProvider: string | null;
+  geocodingSourceLabel: string | null;
   geocodingNote: string | null;
   isPrimary: boolean;
   valueOriginType: ValueOriginType | string;
@@ -199,6 +205,8 @@ export interface ProjectDisplayGeometry {
   note: string | null;
   cityOnly: boolean;
   hasCoordinates: boolean;
+  isManualOverride: boolean;
+  isSourceDerived: boolean;
 }
 
 export interface FieldProvenance {
@@ -331,19 +339,37 @@ export interface MapFeatureItem {
   properties: {
     projectId: string;
     canonicalName: string;
+    companyId: string;
     companyName: string;
     city: string | null;
+    neighborhood: string | null;
     projectBusinessType: string;
+    governmentProgramType: string;
+    projectUrbanRenewalType: string;
     projectStatus: string | null;
+    permitStatus: string | null;
+    totalUnits: number | null;
+    marketedUnits: number | null;
+    soldUnitsCumulative: number | null;
     avgPricePerSqmCumulative: number | null;
     unsoldUnits: number | null;
+    grossProfitTotalExpected: number | null;
+    grossMarginExpectedPct: number | null;
+    latestSnapshotDate: string | null;
     geometryType: string;
     geometrySource: string;
     locationConfidence: string;
     locationQuality: string;
     addressSummary: string | null;
+    centerLat: number | null;
+    centerLng: number | null;
     cityOnly: boolean;
     hasCoordinates: boolean;
+    geometryIsManual: boolean;
+    isSourceDerived: boolean;
+    reportedCount: number;
+    inferredCount: number;
+    manualCount: number;
   };
 }
 
@@ -633,30 +659,135 @@ export interface AdminDuplicateSuggestion {
 export interface AdminCoverageCompany {
   companyId: string;
   companyNameHe: string;
+  isActive: boolean;
   isInScope: boolean;
   outOfScopeReason: string | null;
   coveragePriority: string;
+  latestReportRegisteredId: string | null;
+  latestReportRegisteredName: string | null;
+  latestReportPublished: string | null;
   latestReportIngestedId: string | null;
-  latestReportName: string | null;
+  latestReportIngestedName: string | null;
+  historicalCoverageStart: string | null;
+  historicalCoverageEnd: string | null;
   historicalCoverageStatus: string;
+  backfillStatus: string;
   reportsRegistered: number;
+  reportsPublishedIntoCanonical: number;
   projectsCreated: number;
   snapshotsCreated: number;
+  projectsMissingKeyFields: number;
+  projectsCityOnlyLocation: number;
+  projectsWithExactOrApproximateGeometry: number;
   notes: string | null;
+}
+
+export interface AdminFieldCompletenessItem {
+  fieldName: string;
+  completeCount: number;
+  missingCount: number;
 }
 
 export interface AdminCoverageDashboard {
   summary: {
     companiesInScope: number;
+    companiesWithLatestReportIngested: number;
+    companiesMissingLatestReport: number;
     reportsRegistered: number;
+    reportsPublishedIntoCanonical: number;
     projectsCreated: number;
     snapshotsCreated: number;
     unmatchedCandidates: number;
     ambiguousCandidates: number;
     projectsMissingKeyFields: number;
-    projectsMissingPreciseLocation: number;
+    projectsCityOnlyLocation: number;
+    projectsWithExactOrApproximateGeometry: number;
   };
+  fieldCompleteness: AdminFieldCompletenessItem[];
   companies: AdminCoverageCompany[];
+}
+
+export interface AdminCoverageReportItem {
+  reportId: string;
+  companyId: string;
+  companyNameHe: string;
+  reportName: string | null;
+  reportType: string;
+  periodType: string;
+  periodEndDate: string;
+  publishedAt: string | null;
+  isInScope: boolean;
+  sourceIsOfficial: boolean;
+  sourceLabel: string | null;
+  sourceUrl: string | null;
+  ingestionStatus: string;
+  linkedProjectCount: number;
+  linkedSnapshotCount: number;
+  isPublishedIntoCanonical: boolean;
+  isLatestRegistered: boolean;
+  isLatestIngested: boolean;
+}
+
+export interface AdminCoverageGapItem {
+  projectId: string;
+  projectName: string;
+  companyId: string;
+  companyNameHe: string;
+  city: string | null;
+  locationConfidence: string;
+  locationQuality: string;
+  latestSnapshotDate: string | null;
+  latestSnapshotAgeDays: number | null;
+  missingFields: string[];
+  sourceCount: number;
+  addressCount: number;
+  isPubliclyVisible: boolean;
+  backfillStatus: string;
+}
+
+export interface AdminCoverageGapsResponse {
+  summary: {
+    totalItems: number;
+    missingLocation: number;
+    missingMetrics: number;
+    staleOrMissingSnapshot: number;
+  };
+  items: AdminCoverageGapItem[];
+}
+
+export interface AdminLocationReviewItem {
+  projectId: string;
+  projectName: string;
+  company: ProjectCompanySummary;
+  city: string | null;
+  neighborhood: string | null;
+  locationConfidence: string;
+  locationQuality: string;
+  geometryType: string;
+  geometrySource: string;
+  geometryIsManual: boolean;
+  addressCount: number;
+  primaryAddressId: string | null;
+  primaryAddressSummary: string | null;
+  geocodingStatus: string | null;
+  geocodingMethod: string | null;
+  geocodingSourceLabel: string | null;
+  isGeocodingReady: boolean;
+  latestSnapshotDate: string | null;
+  latestSnapshotAgeDays: number | null;
+  backfillStatus: string;
+  missingLocationFields: string[];
+}
+
+export interface AdminLocationReviewResponse {
+  summary: {
+    totalItems: number;
+    cityOnly: number;
+    unknown: number;
+    manualGeometry: number;
+    geocodingReady: number;
+  };
+  items: AdminLocationReviewItem[];
 }
 
 export interface AdminParserRun {

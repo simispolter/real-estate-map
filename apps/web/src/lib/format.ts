@@ -43,6 +43,40 @@ export function formatDate(value: string | null | undefined) {
   }).format(parsed);
 }
 
+export function formatEnumLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not disclosed";
+  }
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function formatLocationQuality(value: string | null | undefined) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  if (value === "city_only" || value === "city-only") {
+    return "City-only";
+  }
+
+  return formatEnumLabel(value);
+}
+
+export function formatOriginBadgeLabel(value: "reported" | "manual" | "inferred") {
+  if (value === "manual") {
+    return "Manual";
+  }
+  if (value === "inferred") {
+    return "Inferred";
+  }
+  return "Reported";
+}
+
 export function formatAddressLabel({
   addressTextRaw,
   street,

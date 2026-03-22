@@ -1,9 +1,9 @@
 import { CompanyTable } from "@/components/dashboard/company-table";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { Panel } from "@/components/ui/panel";
-import { getCompanies, getFiltersMetadata } from "@/lib/api";
+import { getCompanies, getFiltersMetadata, logServerPageTiming } from "@/lib/api";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -14,6 +14,7 @@ function getSingle(value: string | string[] | undefined) {
 }
 
 export default async function CompaniesPage({ searchParams }: PageProps) {
+  const startedAt = Date.now();
   const params = (await searchParams) ?? {};
   const filters = {
     q: getSingle(params.q),
@@ -25,6 +26,11 @@ export default async function CompaniesPage({ searchParams }: PageProps) {
   const totalProjects = safeItems.reduce((sum, company) => sum + company.projectCount, 0);
   const totalCities = safeItems.reduce((sum, company) => sum + company.cityCount, 0);
   const knownUnsoldUnits = safeItems.reduce((sum, company) => sum + (company.knownUnsoldUnits ?? 0), 0);
+
+  logServerPageTiming("/companies", startedAt, {
+    filters: Object.values(filters).filter(Boolean).length,
+    companies: safeItems.length,
+  });
 
   return (
     <>

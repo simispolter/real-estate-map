@@ -70,6 +70,9 @@ type AddressDraft = {
   lng: string;
   location_confidence: string;
   is_primary: boolean;
+  normalized_display_address: string;
+  geocoding_method: string;
+  geocoding_source_label: string;
   value_origin_type: string;
   change_reason: string;
 };
@@ -135,6 +138,9 @@ function buildAddressDraft(address: ProjectAddress): AddressDraft {
     lng: address.lng?.toString() ?? "",
     location_confidence: address.locationConfidence,
     is_primary: address.isPrimary,
+    normalized_display_address: address.normalizedDisplayAddress ?? "",
+    geocoding_method: address.geocodingMethod ?? "",
+    geocoding_source_label: address.geocodingSourceLabel ?? "",
     value_origin_type: address.valueOriginType,
     change_reason: "",
   };
@@ -151,6 +157,9 @@ function emptyAddressDraft(city: string | null): AddressDraft {
     lng: "",
     location_confidence: "city_only",
     is_primary: false,
+    normalized_display_address: "",
+    geocoding_method: "",
+    geocoding_source_label: "",
     value_origin_type: "manual",
     change_reason: "",
   };
@@ -213,6 +222,9 @@ function buildAddressPayload(draft: AddressDraft) {
     lng: toNullableNumber(draft.lng),
     location_confidence: draft.location_confidence,
     is_primary: draft.is_primary,
+    normalized_display_address: draft.normalized_display_address || null,
+    geocoding_method: draft.geocoding_method || null,
+    geocoding_source_label: draft.geocoding_source_label || null,
     value_origin_type: draft.value_origin_type,
     change_reason: draft.change_reason || null,
   };
@@ -977,6 +989,14 @@ export function AdminProjectEditor({ companies, project }: Props) {
                   <strong>Note</strong>
                   <p className="panel-copy">{address.geocodingNote ?? "No geocoding note"}</p>
                 </div>
+                <div>
+                  <strong>Method</strong>
+                  <p className="panel-copy">{address.geocodingMethod ?? "Not set"}</p>
+                </div>
+                <div>
+                  <strong>Source label</strong>
+                  <p className="panel-copy">{address.geocodingSourceLabel ?? "Not set"}</p>
+                </div>
               </div>
               <div className="address-inline-form">
                 <input placeholder="Raw address text" value={draft.address_text_raw} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, address_text_raw: event.target.value } }))} />
@@ -986,6 +1006,9 @@ export function AdminProjectEditor({ companies, project }: Props) {
                 <input placeholder="City" value={draft.city} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, city: event.target.value } }))} />
                 <input placeholder="Latitude" value={draft.lat} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, lat: event.target.value } }))} />
                 <input placeholder="Longitude" value={draft.lng} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, lng: event.target.value } }))} />
+                <input placeholder="Display address" value={draft.normalized_display_address} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, normalized_display_address: event.target.value } }))} />
+                <input placeholder="Geocoding method" value={draft.geocoding_method} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, geocoding_method: event.target.value } }))} />
+                <input placeholder="Geocoding source label" value={draft.geocoding_source_label} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, geocoding_source_label: event.target.value } }))} />
                 <select value={draft.location_confidence} onChange={(event) => setAddressDrafts((current) => ({ ...current, [address.id]: { ...draft, location_confidence: event.target.value } }))}>
                   {LOCATION_CONFIDENCE_LEVELS.map((value) => (
                     <option key={value} value={value}>
@@ -1032,6 +1055,9 @@ export function AdminProjectEditor({ companies, project }: Props) {
             <input placeholder="City" value={newAddressDraft.city} onChange={(event) => setNewAddressDraft((current) => ({ ...current, city: event.target.value }))} />
             <input placeholder="Latitude" value={newAddressDraft.lat} onChange={(event) => setNewAddressDraft((current) => ({ ...current, lat: event.target.value }))} />
             <input placeholder="Longitude" value={newAddressDraft.lng} onChange={(event) => setNewAddressDraft((current) => ({ ...current, lng: event.target.value }))} />
+            <input placeholder="Display address" value={newAddressDraft.normalized_display_address} onChange={(event) => setNewAddressDraft((current) => ({ ...current, normalized_display_address: event.target.value }))} />
+            <input placeholder="Geocoding method" value={newAddressDraft.geocoding_method} onChange={(event) => setNewAddressDraft((current) => ({ ...current, geocoding_method: event.target.value }))} />
+            <input placeholder="Geocoding source label" value={newAddressDraft.geocoding_source_label} onChange={(event) => setNewAddressDraft((current) => ({ ...current, geocoding_source_label: event.target.value }))} />
             <select value={newAddressDraft.location_confidence} onChange={(event) => setNewAddressDraft((current) => ({ ...current, location_confidence: event.target.value }))}>
               {LOCATION_CONFIDENCE_LEVELS.map((value) => (
                 <option key={value} value={value}>

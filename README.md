@@ -164,3 +164,23 @@ If you already initialized the Postgres volume before the Phase 2 migration chan
   - `python -m pytest apps/api/tests -q`
   - `npm run typecheck --workspace @real-estat-map/web`
   - `npm run build --workspace @real-estat-map/web`
+
+### Coverage Expansion + Geocoding Hardening
+
+- Implemented:
+  - expanded company coverage registry fields for active status, latest registered/published/ingested report tracking, historical coverage range, and backfill status
+  - new admin coverage pages:
+    - `http://localhost:3000/admin/coverage`
+    - `http://localhost:3000/admin/coverage/companies`
+    - `http://localhost:3000/admin/coverage/reports`
+    - `http://localhost:3000/admin/coverage/gaps`
+  - new admin location review queue:
+    - `http://localhost:3000/admin/projects/location-review`
+  - field completeness tracking for key public project fields and CSV exports for gap review, missing location, missing metrics, and report coverage
+  - hardened address/geocoding metadata with normalized display address, geocoding-ready flag, method, source label, and manual-vs-source geometry visibility
+  - public/admin payload updates so location quality and manual/source-derived geometry are visible in project lists, project detail, and map panels
+- Validation:
+  - `python -m pytest apps/api/tests -q`
+  - `python -m compileall apps/api`
+  - `npm run typecheck --workspace @real-estat-map/web`
+  - `npm run build --workspace @real-estat-map/web`

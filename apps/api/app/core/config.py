@@ -17,6 +17,8 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
+    slow_query_threshold_ms: int = Field(default=75, alias="SLOW_QUERY_THRESHOLD_MS")
+    request_timing_threshold_ms: int = Field(default=150, alias="REQUEST_TIMING_THRESHOLD_MS")
 
     model_config = SettingsConfigDict(
         env_file=".env",

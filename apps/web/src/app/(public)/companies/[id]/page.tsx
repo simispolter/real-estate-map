@@ -4,16 +4,17 @@ import { notFound } from "next/navigation";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { Panel } from "@/components/ui/panel";
 import { Tag } from "@/components/ui/tag";
-import { getCompanyDetail } from "@/lib/api";
+import { getCompanyDetail, logServerPageTiming } from "@/lib/api";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
 export default async function CompanyDetailPage({ params }: PageProps) {
+  const startedAt = Date.now();
   const { id } = await params;
   const companyResult = await getCompanyDetail(id);
 
@@ -22,6 +23,11 @@ export default async function CompanyDetailPage({ params }: PageProps) {
   }
 
   const company = companyResult.item;
+
+  logServerPageTiming("/companies/[id]", startedAt, {
+    company_id: id,
+    projects: company.projects.length,
+  });
 
   return (
     <>

@@ -312,6 +312,7 @@ export function ProjectMapPanel({
                   {selectedFeature.properties.locationQuality}
                 </Tag>
                 <Tag>{selectedFeature.properties.geometryType}</Tag>
+                <Tag>{selectedFeature.properties.geometryIsManual ? "manual" : selectedFeature.properties.isSourceDerived ? "source" : "derived"}</Tag>
                 <Tag>{selectedFeature.properties.projectBusinessType}</Tag>
               </div>
               <p className="panel-copy">
@@ -374,6 +375,7 @@ export function ProjectMapPanel({
                 <div className="tag-row">
                   <Tag tone={qualityTone(feature.properties.locationQuality)}>{feature.properties.locationQuality}</Tag>
                   <Tag>{feature.properties.geometryType}</Tag>
+                  <Tag>{feature.properties.geometryIsManual ? "manual" : feature.properties.isSourceDerived ? "source" : "derived"}</Tag>
                   <Tag>{feature.properties.hasCoordinates ? "mapped" : "city-only"}</Tag>
                 </div>
                 <p className="panel-copy">
