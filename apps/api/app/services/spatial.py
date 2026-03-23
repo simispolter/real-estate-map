@@ -58,6 +58,14 @@ def build_address_summary(address: ProjectAddress) -> str:
     if address.normalized_display_address:
         return address.normalized_display_address
 
+    if address.parcel_block and address.parcel_number:
+        parcel_bits = [f"גוש {address.parcel_block}", f"חלקה {address.parcel_number}"]
+        if address.sub_parcel:
+            parcel_bits.append(f"תת-חלקה {address.sub_parcel}")
+        if address.city:
+            parcel_bits.append(address.city)
+        return " | ".join(parcel_bits)
+
     parts = [address.normalized_street or address.street, address.city]
     if address.house_number_from is not None:
         if address.house_number_to and address.house_number_to != address.house_number_from:
@@ -71,6 +79,12 @@ def build_address_summary(address: ProjectAddress) -> str:
 def normalize_address_record(address: ProjectAddress) -> dict[str, str | bool | None]:
     normalized_street = _normalize_part(address.street)
     normalized_city = _normalize_part(address.city)
+    parcel_summary = None
+    if address.parcel_block and address.parcel_number:
+        parcel_bits = [f"גוש {address.parcel_block}", f"חלקה {address.parcel_number}"]
+        if address.sub_parcel:
+            parcel_bits.append(f"תת-חלקה {address.sub_parcel}")
+        parcel_summary = " ".join(parcel_bits)
     address_bits = [normalized_street]
     if address.house_number_from is not None:
         if address.house_number_to and address.house_number_to != address.house_number_from:
@@ -84,9 +98,13 @@ def normalize_address_record(address: ProjectAddress) -> dict[str, str | bool | 
     if not normalized_address_text:
         normalized_address_text = _normalize_part(address.address_text_raw)
 
-    normalized_display_address = normalized_address_text or " ".join(
-        bit for bit in [normalized_street, normalized_city] if bit
+    normalized_display_address = (
+        normalized_address_text
+        or parcel_summary
+        or " ".join(bit for bit in [normalized_street, normalized_city] if bit)
     )
+    if normalized_city and parcel_summary and normalized_city not in normalized_display_address:
+        normalized_display_address = f"{normalized_display_address}, {normalized_city}"
 
     return {
         "normalized_address_text": normalized_address_text,
@@ -94,7 +112,11 @@ def normalize_address_record(address: ProjectAddress) -> dict[str, str | bool | 
         "normalized_street": normalized_street,
         "normalized_city": normalized_city,
         "geocoding_query": normalized_address_text or normalized_city,
-        "is_geocoding_ready": bool(normalized_city and (normalized_street or address.address_text_raw)),
+        "is_geocoding_ready": bool(
+            normalized_city
+            and (normalized_street or address.address_text_raw)
+            and not (address.parcel_block and address.parcel_number)
+        ),
     }
 
 

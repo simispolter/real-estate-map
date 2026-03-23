@@ -678,6 +678,28 @@ def test_admin_location_review_route(monkeypatch):
     assert payload["items"][0]["primary_address_id"] == ADDRESS_ID
 
 
+def test_admin_location_reference_route(monkeypatch):
+    async def fake_list_admin_location_reference(_session, city=None, q=None):
+        assert city == "תל אביב"
+        return {
+            "cities": ["אשדוד", "תל אביב"],
+            "streets": ["דרך השלום", "הרצל"],
+        }
+
+    monkeypatch.setattr(admin_endpoints, "list_admin_location_reference", fake_list_admin_location_reference)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/location-reference", params={"city": "תל אביב"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cities"][1] == "תל אביב"
+    assert "הרצל" in payload["streets"]
+
+
 def test_admin_coverage_bulk_route(monkeypatch):
     async def fake_apply_coverage_bulk_action(_session, _payload):
         return {"applied_count": 2, "target_type": "company", "action": "set_scope"}

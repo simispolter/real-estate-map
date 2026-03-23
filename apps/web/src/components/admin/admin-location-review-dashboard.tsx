@@ -15,34 +15,34 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
 
   function normalizePrimary(projectId: string, addressId: string | null) {
     if (!addressId) {
-      setFeedback("This project does not have a primary address yet.");
+      setFeedback("לפרויקט הזה עדיין אין כתובת ראשית.");
       return;
     }
     startTransition(async () => {
       setFeedback(null);
       const result = await normalizeAdminProjectAddress(projectId, addressId);
       if (!result.item) {
-        setFeedback("Address normalization failed.");
+        setFeedback("נרמול הכתובת נכשל.");
         return;
       }
-      setFeedback("Primary address normalized.");
+      setFeedback("הכתובת הראשית נורמלה בהצלחה.");
       router.refresh();
     });
   }
 
   function geocodePrimary(projectId: string, addressId: string | null) {
     if (!addressId) {
-      setFeedback("This project does not have a primary address yet.");
+      setFeedback("לפרויקט הזה עדיין אין כתובת ראשית.");
       return;
     }
     startTransition(async () => {
       setFeedback(null);
       const result = await geocodeAdminProjectAddress(projectId, addressId);
       if (!result.item) {
-        setFeedback("Primary address geocoding failed.");
+        setFeedback("איתור הכתובת הראשית נכשל.");
         return;
       }
-      setFeedback("Primary address geocoded.");
+      setFeedback("הכתובת הראשית אותרה בהצלחה.");
       router.refresh();
     });
   }
@@ -55,11 +55,11 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
           <table className="data-table">
             <thead>
               <tr>
-                <th>Project</th>
-                <th>Location quality</th>
-                <th>Primary address</th>
-                <th>Geocoding</th>
-                <th>Snapshot freshness</th>
+                <th>פרויקט</th>
+                <th>איכות מיקום</th>
+                <th>כתובת ראשית</th>
+                <th>איתור</th>
+                <th>עדכניות</th>
                 <th></th>
               </tr>
             </thead>
@@ -70,7 +70,7 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
                     <div className="stacked-cell">
                       <Link href={`/admin/projects/${item.projectId}`}>{item.projectName}</Link>
                       <span className="muted-copy">
-                        {item.company.nameHe} | {item.city ?? "Unknown city"}
+                        {item.company.nameHe} | {item.city ?? "עיר לא ידועה"}
                       </span>
                     </div>
                   </td>
@@ -78,23 +78,23 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
                     <div className="stacked-cell">
                       <span>{item.locationQuality}</span>
                       <span className="muted-copy">
-                        {item.geometryType} | {item.geometryIsManual ? "manual" : item.geometrySource}
+                        {item.geometryType} | {item.geometryIsManual ? "ידני" : item.geometrySource}
                       </span>
                     </div>
                   </td>
                   <td>
                     <div className="stacked-cell">
-                      <span>{item.primaryAddressSummary ?? "No address summary"}</span>
+                      <span>{item.primaryAddressSummary ?? "אין כתובת מסוכמת"}</span>
                       <span className="muted-copy">
-                        {item.addressCount} addresses | {item.backfillStatus}
+                        {item.addressCount} כתובות | {item.backfillStatus}
                       </span>
                     </div>
                   </td>
                   <td>
                     <div className="stacked-cell">
-                      <span>{item.geocodingStatus ?? "not_started"}</span>
+                      <span>{item.geocodingStatus ?? "לא התחיל"}</span>
                       <span className="muted-copy">
-                        {item.geocodingMethod ?? "No method"} | {item.isGeocodingReady ? "ready" : "not ready"}
+                        {item.geocodingMethod ?? "ללא שיטה"} | {item.isGeocodingReady ? "מוכן" : "לא מוכן"}
                       </span>
                     </div>
                   </td>
@@ -102,20 +102,20 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
                     <div className="stacked-cell">
                       <span>{formatDate(item.latestSnapshotDate)}</span>
                       <span className="muted-copy">
-                        {item.latestSnapshotAgeDays !== null ? `${item.latestSnapshotAgeDays} days` : "No snapshot"}
+                        {item.latestSnapshotAgeDays !== null ? `${item.latestSnapshotAgeDays} ימים` : "ללא snapshot"}
                       </span>
                     </div>
                   </td>
                   <td>
                     <div className="form-actions">
                       <button className="secondary-button" disabled={isPending} onClick={() => normalizePrimary(item.projectId, item.primaryAddressId)} type="button">
-                        Normalize
+                        נרמול
                       </button>
                       <button className="secondary-button" disabled={isPending} onClick={() => geocodePrimary(item.projectId, item.primaryAddressId)} type="button">
-                        Geocode
+                        איתור
                       </button>
                       <Link className="primary-button" href={`/admin/projects/${item.projectId}`}>
-                        Open project
+                        פתיחת פרויקט
                       </Link>
                     </div>
                   </td>
@@ -126,8 +126,8 @@ export function AdminLocationReviewDashboard({ initialItems }: { initialItems: A
         </div>
       ) : (
         <div className="empty-state">
-          <strong>No projects need focused location review in this filter set.</strong>
-          <p className="panel-copy">Try including all projects or broadening the company and city filters.</p>
+          <strong>אין כרגע פרויקטים שדורשים טיפול ממוקד במיקום לפי המסננים שנבחרו.</strong>
+          <p className="panel-copy">נסו להרחיב את המסננים או לכלול גם פרויקטים עם מיקום מדויק / בקירוב.</p>
         </div>
       )}
     </div>

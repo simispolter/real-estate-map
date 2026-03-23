@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -26,6 +26,7 @@ from app.models import (
 from app.services.catalog import _confidence_level, _location_quality, _value_origin_summary
 from app.services.identity_ops import assess_snapshot_chronology, get_coverage_dashboard, list_duplicate_suggestions, normalize_text
 from app.services.spatial import (
+    CITY_CENTROIDS,
     apply_manual_display_geometry,
     geocode_project_address,
     normalize_project_address,
@@ -35,6 +36,18 @@ from app.services.spatial import (
 
 
 PLACEHOLDER_ADMIN_EMAIL = "phase3-admin@local"
+BOOTSTRAP_STREETS_BY_CITY: dict[str, list[str]] = {
+    "תל אביב": ["אבן גבירול", "דרך השלום", "החשמונאים", "הרצל", "מנחם בגין"],
+    "ירושלים": ["יפו", "הנביאים", "הרצל", "כנפי נשרים", "עמק רפאים"],
+    "אשדוד": ["בן גוריון", "העצמאות", "מנחם בגין", "רוגוזין", "שדרות ירושלים"],
+    "אשקלון": ["בן גוריון", "ההסתדרות", "הרצל", "שדרות ירושלים"],
+    "בת ים": ["בלפור", "הקוממיות", "הרצל", "יוספטל", "רוטשילד"],
+    "כפר סבא": ["ויצמן", "הגליל", "ז'בוטינסקי", "טשרניחובסקי"],
+    "לוד": ["הרצל", "יוספטל", "כצנלסון", "שדרות ירושלים"],
+    "נתניה": ["הרצל", "דיזנגוף", "ז'בוטינסקי", "בן יהודה", "ויצמן"],
+    "רחובות": ["הרצל", "אופנהיימר", "בילו", "יעקב", "מנוחה ונחלה"],
+    "רמת גן": ["אבא הלל", "ביאליק", "הירדן", "ז'בוטינסקי", "בן גוריון"],
+}
 SNAPSHOT_DIFF_FIELDS = (
     "total_units",
     "marketed_units",
@@ -437,6 +450,10 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
                 "normalized_street": address.normalized_street,
                 "house_number_from": address.house_number_from,
                 "house_number_to": address.house_number_to,
+                "parcel_block": address.parcel_block,
+                "parcel_number": address.parcel_number,
+                "sub_parcel": address.sub_parcel,
+                "address_note": address.address_note,
                 "lat": address.lat,
                 "lng": address.lng,
                 "location_confidence": address.location_confidence,
@@ -930,6 +947,83 @@ async def list_project_snapshots(session: AsyncSession, project_id: UUID) -> lis
     return items
 
 
+def _normalize_reference_term(value: str | None) -> str:
+    return normalize_text(value or "")
+
+
+async def list_admin_location_reference(
+    session: AsyncSession,
+    *,
+    city: str | None = None,
+    q: str | None = None,
+) -> dict:
+    city_rows = (
+        await session.execute(
+            select(ProjectMaster.city)
+            .where(ProjectMaster.city.is_not(None), ProjectMaster.deleted_at.is_(None))
+            .distinct()
+        )
+    ).scalars().all()
+    address_city_rows = (
+        await session.execute(
+            select(ProjectAddress.normalized_city, ProjectAddress.city)
+            .where(or_(ProjectAddress.normalized_city.is_not(None), ProjectAddress.city.is_not(None)))
+            .distinct()
+        )
+    ).all()
+    cities = {
+        value.strip()
+        for value in city_rows
+        if isinstance(value, str) and value.strip()
+    }
+    for normalized_city, raw_city in address_city_rows:
+        for value in (normalized_city, raw_city):
+            if isinstance(value, str) and value.strip():
+                cities.add(value.strip())
+    cities.update(CITY_CENTROIDS.keys())
+    cities.update(BOOTSTRAP_STREETS_BY_CITY.keys())
+
+    search_term = _normalize_reference_term(q)
+    sorted_cities = sorted(
+        [
+            value
+            for value in cities
+            if not search_term or search_term in _normalize_reference_term(value)
+        ]
+    )
+
+    streets_stmt = select(ProjectAddress.normalized_street, ProjectAddress.street).where(
+        or_(ProjectAddress.normalized_street.is_not(None), ProjectAddress.street.is_not(None))
+    )
+    if city:
+        normalized_city = city.strip()
+        streets_stmt = streets_stmt.where(
+            or_(ProjectAddress.normalized_city == normalized_city, ProjectAddress.city == normalized_city)
+        )
+
+    street_rows = (await session.execute(streets_stmt.distinct())).all()
+    streets = {
+        value.strip()
+        for normalized_street, raw_street in street_rows
+        for value in (normalized_street, raw_street)
+        if isinstance(value, str) and value.strip()
+    }
+    if city and city.strip() in BOOTSTRAP_STREETS_BY_CITY:
+        streets.update(BOOTSTRAP_STREETS_BY_CITY[city.strip()])
+    sorted_streets = sorted(
+        [
+            value
+            for value in streets
+            if not search_term or search_term in _normalize_reference_term(value)
+        ]
+    )
+
+    return {
+        "cities": sorted_cities[:200],
+        "streets": sorted_streets[:200],
+    }
+
+
 async def create_project_snapshot(session: AsyncSession, project_id: UUID, payload: dict) -> dict | None:
     project = await _get_project(session, project_id)
     if project is None:
@@ -1164,6 +1258,10 @@ async def upsert_project_address(
         "house_number_from",
         "house_number_to",
         "city",
+        "parcel_block",
+        "parcel_number",
+        "sub_parcel",
+        "address_note",
         "lat",
         "lng",
         "location_confidence",

@@ -83,13 +83,30 @@ export function formatAddressLabel({
   houseNumberFrom,
   houseNumberTo,
   city,
+  parcelBlock,
+  parcelNumber,
+  subParcel,
 }: {
   addressTextRaw?: string | null;
   street?: string | null;
   houseNumberFrom?: number | null;
   houseNumberTo?: number | null;
   city?: string | null;
+  parcelBlock?: string | null;
+  parcelNumber?: string | null;
+  subParcel?: string | null;
 }) {
+  if (parcelBlock && parcelNumber) {
+    const parcelParts = [`גוש ${parcelBlock}`, `חלקה ${parcelNumber}`];
+    if (subParcel) {
+      parcelParts.push(`תת-חלקה ${subParcel}`);
+    }
+    if (city) {
+      parcelParts.push(city);
+    }
+    return parcelParts.join(" | ");
+  }
+
   const numberLabel =
     houseNumberFrom && houseNumberTo && houseNumberFrom !== houseNumberTo
       ? `${houseNumberFrom}-${houseNumberTo}`

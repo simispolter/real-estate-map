@@ -177,6 +177,10 @@ export interface ProjectAddress {
   normalizedStreet: string | null;
   houseNumberFrom: number | null;
   houseNumberTo: number | null;
+  parcelBlock: string | null;
+  parcelNumber: string | null;
+  subParcel: string | null;
+  addressNote: string | null;
   lat: number | null;
   lng: number | null;
   locationConfidence: string;
@@ -788,6 +792,11 @@ export interface AdminLocationReviewResponse {
     geocodingReady: number;
   };
   items: AdminLocationReviewItem[];
+}
+
+export interface AdminLocationReference {
+  cities: string[];
+  streets: string[];
 }
 
 export interface AdminParserRun {

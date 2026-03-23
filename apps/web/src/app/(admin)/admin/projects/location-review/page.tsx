@@ -38,15 +38,15 @@ export default async function AdminProjectLocationReviewPage({ searchParams }: P
   return (
     <>
       <Panel
-        eyebrow="Location Review"
-        title="Projects needing location hardening"
-        description="Route city-only and unknown projects into address normalization, geocoding, and manual geometry correction without leaving the canonical project workflow."
+        eyebrow="בקרת מיקום"
+        title="תור פרויקטים לטיוב מיקום"
+        description="עברו על פרויקטים עם מיקום חלש, השלימו כתובת או גוש / חלקה, ופתחו את מסך הפרויקט למיקום מדויק יותר."
       >
         <form className="admin-form-grid" method="get">
           <label className="filter-field">
-            <span>Company</span>
+            <span>חברה</span>
             <select defaultValue={filters.company_id ?? ""} name="company_id">
-              <option value="">All companies</option>
+              <option value="">כל החברות</option>
               {companiesResult.items.map((company) => (
                 <option key={company.id} value={company.id}>
                   {company.nameHe}
@@ -55,66 +55,66 @@ export default async function AdminProjectLocationReviewPage({ searchParams }: P
             </select>
           </label>
           <label className="filter-field">
-            <span>City</span>
-            <input defaultValue={filters.city ?? ""} name="city" placeholder="Filter by city" />
+            <span>עיר</span>
+            <input defaultValue={filters.city ?? ""} name="city" placeholder="סינון לפי עיר" />
           </label>
           <label className="filter-field">
-            <span>Location confidence</span>
-            <input defaultValue={filters.location_confidence ?? ""} name="location_confidence" placeholder="city_only or unknown" />
+            <span>איכות מיקום</span>
+            <input defaultValue={filters.location_confidence ?? ""} name="location_confidence" placeholder="למשל city_only" />
           </label>
           <label className="filter-field">
-            <span>Backfill status</span>
-            <input defaultValue={filters.backfill_status ?? ""} name="backfill_status" placeholder="historical_backfill, complete" />
+            <span>סטטוס backfill</span>
+            <input defaultValue={filters.backfill_status ?? ""} name="backfill_status" placeholder="למשל historical_backfill" />
           </label>
           <label className="filter-field">
-            <span>Only rows missing fields</span>
+            <span>רק פריטים עם חוסרים</span>
             <select defaultValue={filters.missing_fields ?? ""} name="missing_fields">
-              <option value="">All</option>
-              <option value="yes">Yes</option>
+              <option value="">הכול</option>
+              <option value="yes">כן</option>
             </select>
           </label>
           <label className="panel-copy">
-            <input defaultChecked={filters.include_all === "true"} name="include_all" type="checkbox" value="true" /> Include exact / approximate projects too
+            <input defaultChecked={filters.include_all === "true"} name="include_all" type="checkbox" value="true" /> לכלול גם פרויקטים עם מיקום מדויק / בקירוב
           </label>
           <div className="form-actions">
             <button className="primary-button" type="submit">
-              Apply filters
+              החל מסננים
             </button>
             <a className="secondary-button" href="/admin/projects/location-review">
-              Clear
+              ניקוי
             </a>
             <a
               className="secondary-button"
               href={`${exportBaseUrl}/api/v1/admin/coverage/export?kind=location_missing${exportQuery ? `&${exportQuery}` : ""}`}
             >
-              Export missing location
+              ייצוא חוסרי מיקום
             </a>
           </div>
         </form>
       </Panel>
 
       {reviewResult.state === "error" || !reviewResult.item ? (
-        <Panel eyebrow="Status" title="Location review data is temporarily unavailable">
-          <p className="panel-copy">The location queue endpoint did not return a usable payload right now.</p>
+        <Panel eyebrow="סטטוס" title="נתוני תור המיקומים לא זמינים כרגע">
+          <p className="panel-copy">לא התקבל כרגע payload תקין מהשרת עבור תור בקרת המיקום.</p>
         </Panel>
       ) : (
         <>
           <section className="stats-grid">
             <div>
               <strong>{reviewResult.item.summary.totalItems}</strong>
-              <span>Queue items</span>
+              <span>פריטים בתור</span>
             </div>
             <div>
               <strong>{reviewResult.item.summary.cityOnly}</strong>
-              <span>City-only</span>
+              <span>ברמת עיר בלבד</span>
             </div>
             <div>
               <strong>{reviewResult.item.summary.unknown}</strong>
-              <span>Unknown</span>
+              <span>לא ידוע</span>
             </div>
             <div>
               <strong>{reviewResult.item.summary.geocodingReady}</strong>
-              <span>Geocoding-ready</span>
+              <span>מוכנים לאיתור</span>
             </div>
           </section>
           <AdminLocationReviewDashboard initialItems={reviewResult.item.items} />

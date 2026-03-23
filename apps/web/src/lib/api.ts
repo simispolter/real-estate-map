@@ -21,6 +21,7 @@ import type {
   AdminProjectLinkedCandidateItem,
   AdminLocationReviewItem,
   AdminLocationReviewResponse,
+  AdminLocationReference,
   AdminProjectSourceItem,
   AdminReportDetail,
   AdminReportSummary,
@@ -260,6 +261,10 @@ function mapAddress(item: Record<string, unknown>, index: number): ProjectAddres
     normalizedStreet: stringOrNull(item.normalized_street),
     houseNumberFrom: numberOrNull(item.house_number_from),
     houseNumberTo: numberOrNull(item.house_number_to),
+    parcelBlock: stringOrNull(item.parcel_block),
+    parcelNumber: stringOrNull(item.parcel_number),
+    subParcel: stringOrNull(item.sub_parcel),
+    addressNote: stringOrNull(item.address_note),
     lat: numberOrNull(item.lat),
     lng: numberOrNull(item.lng),
     locationConfidence: stringOrNull(item.location_confidence) ?? "unknown",
@@ -1581,6 +1586,20 @@ export async function getAdminLocationReview(filters: Record<string, string | un
       geocodingReady: numberOrNull(summary.geocoding_ready) ?? 0,
     },
     items: safeArray<Record<string, unknown>>(response.items).map(mapAdminLocationReviewItem),
+  };
+  return { item, state: "ready" as DataState };
+}
+
+export async function getAdminLocationReference(filters: Record<string, string | undefined> = {}) {
+  const response = await apiFetch<Record<string, unknown>>("/api/v1/admin/location-reference", {
+    searchParams: buildSearchParams(filters),
+  });
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  const item: AdminLocationReference = {
+    cities: safeArray<string>(response.cities).filter((value) => typeof value === "string"),
+    streets: safeArray<string>(response.streets).filter((value) => typeof value === "string"),
   };
   return { item, state: "ready" as DataState };
 }

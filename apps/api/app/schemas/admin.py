@@ -180,6 +180,10 @@ class AdminAddressUpsertRequest(BaseModel):
     house_number_from: int | None = None
     house_number_to: int | None = None
     city: str | None = None
+    parcel_block: str | None = None
+    parcel_number: str | None = None
+    sub_parcel: str | None = None
+    address_note: str | None = None
     lat: float | None = None
     lng: float | None = None
     location_confidence: str = "city_only"
@@ -189,6 +193,11 @@ class AdminAddressUpsertRequest(BaseModel):
     geocoding_source_label: str | None = None
     value_origin_type: str = "reported"
     change_reason: str | None = None
+
+
+class AdminLocationReferenceResponse(BaseModel):
+    cities: list[str] = Field(default_factory=list)
+    streets: list[str] = Field(default_factory=list)
 
 
 class AdminProjectDisplayGeometryUpdateRequest(BaseModel):

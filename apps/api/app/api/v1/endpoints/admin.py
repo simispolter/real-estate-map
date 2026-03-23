@@ -20,6 +20,7 @@ from app.schemas.admin import (
     AdminExternalLayersResponse,
     AdminExternalLayerUpdateRequest,
     AdminIntakeListResponse,
+    AdminLocationReferenceResponse,
     AdminMergeProjectsRequest,
     AdminOpsDashboardResponse,
     AdminOverviewResponse,
@@ -61,6 +62,7 @@ from app.services.admin_review import (
     get_admin_project_detail,
     get_intake_candidate_detail,
     list_admin_duplicates,
+    list_admin_location_reference,
     list_admin_projects,
     list_intake_candidates,
     list_project_snapshots,
@@ -110,6 +112,17 @@ async def get_admin_projects(
         "sort_by": sort_by,
     }
     return AdminProjectsListResponse(items=await list_admin_projects(session, filters))
+
+
+@router.get("/location-reference", response_model=AdminLocationReferenceResponse)
+async def get_admin_location_reference(
+    city: str | None = None,
+    q: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminLocationReferenceResponse:
+    return AdminLocationReferenceResponse.model_validate(
+        await list_admin_location_reference(session, city=city, q=q)
+    )
 
 
 @router.post("/projects", response_model=AdminProjectDetailResponse)

@@ -508,6 +508,150 @@ p {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.location-manager-card {
+  gap: 20px;
+}
+
+.location-summary-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.location-status-grid,
+.location-workflow-grid,
+.location-address-list,
+.location-confidence-row,
+.admin-location-map-toolbar {
+  display: grid;
+  gap: 12px;
+}
+
+.location-status-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.location-status-card,
+.location-address-chip,
+.admin-location-map-shell,
+.admin-location-map-fallback,
+.admin-location-map-loading {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.location-status-card {
+  display: grid;
+  gap: 8px;
+}
+
+.location-status-card strong {
+  font-size: 0.92rem;
+}
+
+.location-mode-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.location-tab-active {
+  border-color: rgba(15, 108, 123, 0.3);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.location-address-list {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.location-address-chip {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.location-address-chip strong,
+.location-address-chip span {
+  overflow-wrap: anywhere;
+}
+
+.location-address-chip-active {
+  border-color: rgba(15, 108, 123, 0.3);
+  box-shadow: 0 0 0 2px rgba(15, 108, 123, 0.08);
+}
+
+.location-workflow-grid {
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  align-items: start;
+}
+
+.location-confidence-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.location-wide-field {
+  grid-column: 1 / -1;
+}
+
+.admin-location-map-shell {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-location-map-stage {
+  display: grid;
+}
+
+.admin-location-map-toolbar {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.admin-location-map-canvas {
+  min-height: 360px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 108, 123, 0.18);
+  grid-area: 1 / 1;
+}
+
+.admin-location-map-fallback,
+.admin-location-map-loading {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-location-map-loading {
+  grid-area: 1 / 1;
+  width: min(100%, 420px);
+  justify-self: center;
+  align-self: center;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.admin-location-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.admin-location-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.location-advanced-meta {
+  grid-column: 1 / -1;
+}
+
 .candidate-queue-card-active {
   border-color: rgba(15, 108, 123, 0.36);
   box-shadow: 0 0 0 2px rgba(15, 108, 123, 0.08);
@@ -1125,6 +1269,12 @@ p {
   .map-browser-meta {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .location-status-grid,
+  .location-workflow-grid,
+  .location-confidence-row {
+    grid-template-columns: 1fr;
   }
 }
 

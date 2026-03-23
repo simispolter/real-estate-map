@@ -141,6 +141,10 @@ class ProjectAddressResponse(BaseModel):
     normalized_street: str | None = None
     house_number_from: int | None = None
     house_number_to: int | None = None
+    parcel_block: str | None = None
+    parcel_number: str | None = None
+    sub_parcel: str | None = None
+    address_note: str | None = None
     lat: Decimal | None = None
     lng: Decimal | None = None
     location_confidence: str
