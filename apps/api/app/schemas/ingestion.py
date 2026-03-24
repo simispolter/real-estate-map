@@ -57,6 +57,49 @@ class AdminParserRunsResponse(BaseModel):
     items: list[AdminParserRunItem] = Field(default_factory=list)
 
 
+class AdminQaDistributionItem(BaseModel):
+    key: str
+    count: int
+
+
+class AdminQaMissingFieldItem(BaseModel):
+    field_name: str
+    missing_count: int
+
+
+class AdminQaFamilyCoverageItem(BaseModel):
+    section_kind: str
+    section_count: int = 0
+    candidate_count: int = 0
+    matched_existing_count: int = 0
+    new_project_count: int = 0
+    ambiguous_count: int = 0
+    ignored_count: int = 0
+
+
+class AdminReportQaSummary(BaseModel):
+    total_candidates: int = 0
+    projects_detected: int = 0
+    matched_existing_projects: int = 0
+    new_projects_needed: int = 0
+    ambiguous_candidates: int = 0
+    rejected_or_ignored_candidates: int = 0
+    published_candidates: int = 0
+    missing_key_field_total: int = 0
+    latest_parser_sections_found: int = 0
+    latest_parser_candidate_count: int = 0
+
+
+class AdminReportQaResponse(BaseModel):
+    report_id: UUID
+    summary: AdminReportQaSummary
+    lifecycle_stage_distribution: list[AdminQaDistributionItem] = Field(default_factory=list)
+    disclosure_level_distribution: list[AdminQaDistributionItem] = Field(default_factory=list)
+    family_coverage: list[AdminQaFamilyCoverageItem] = Field(default_factory=list)
+    missing_key_fields: list[AdminQaMissingFieldItem] = Field(default_factory=list)
+    latest_parser_run: AdminParserRunItem | None = None
+
+
 class AdminFieldCandidateInput(BaseModel):
     id: UUID | None = None
     field_name: str
@@ -64,6 +107,9 @@ class AdminFieldCandidateInput(BaseModel):
     normalized_value: str | None = None
     source_page: int | None = None
     source_section: str | None = None
+    source_table_name: str | None = None
+    source_row_label: str | None = None
+    extraction_profile_key: str | None = None
     value_origin_type: str = "manual"
     confidence_level: str = "medium"
     review_status: str = "pending"
@@ -92,6 +138,9 @@ class AdminCandidateSummary(BaseModel):
     candidate_project_name: str
     city: str | None = None
     neighborhood: str | None = None
+    candidate_lifecycle_stage: str | None = None
+    candidate_disclosure_level: str | None = None
+    candidate_section_kind: str | None = None
     matching_status: str
     publish_status: str
     confidence_level: str
@@ -146,6 +195,13 @@ class AdminCandidateCreateRequest(BaseModel):
     candidate_project_name: str
     city: str | None = None
     neighborhood: str | None = None
+    candidate_lifecycle_stage: str | None = None
+    candidate_disclosure_level: str | None = None
+    candidate_section_kind: str | None = None
+    candidate_materiality_flag: bool | None = None
+    source_table_name: str | None = None
+    source_row_label: str | None = None
+    extraction_profile_key: str | None = None
     project_business_type: str | None = None
     government_program_type: str = "none"
     project_urban_renewal_type: str = "none"
@@ -172,6 +228,13 @@ class AdminCandidateUpdateRequest(BaseModel):
     candidate_project_name: str | None = None
     city: str | None = None
     neighborhood: str | None = None
+    candidate_lifecycle_stage: str | None = None
+    candidate_disclosure_level: str | None = None
+    candidate_section_kind: str | None = None
+    candidate_materiality_flag: bool | None = None
+    source_table_name: str | None = None
+    source_row_label: str | None = None
+    extraction_profile_key: str | None = None
     project_business_type: str | None = None
     government_program_type: str | None = None
     project_urban_renewal_type: str | None = None
@@ -246,6 +309,13 @@ class AdminCandidateDetailResponse(BaseModel):
     candidate_project_name: str
     city: str | None = None
     neighborhood: str | None = None
+    candidate_lifecycle_stage: str | None = None
+    candidate_disclosure_level: str | None = None
+    candidate_section_kind: str | None = None
+    candidate_materiality_flag: bool | None = None
+    source_table_name: str | None = None
+    source_row_label: str | None = None
+    extraction_profile_key: str | None = None
     project_business_type: str | None = None
     government_program_type: str
     project_urban_renewal_type: str
@@ -272,6 +342,7 @@ class AdminCandidateDetailResponse(BaseModel):
     match_suggestions: list[MatchSuggestionResponse] = Field(default_factory=list)
     compare_rows: list[CandidateCompareRowResponse] = Field(default_factory=list)
     diff_summary: list[CandidateDiffItemResponse] = Field(default_factory=list)
+    extension_blocks: dict[str, dict[str, Any]] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 

@@ -6,7 +6,10 @@ import {
   LOCATION_CONFIDENCE_LEVELS,
   PERMIT_STATUSES,
   PROJECT_BUSINESS_TYPES,
+  PROJECT_DISCLOSURE_LEVELS,
+  PROJECT_LIFECYCLE_STAGES,
   PROJECT_STATUSES,
+  SOURCE_SECTION_KINDS,
   URBAN_RENEWAL_TYPES,
   VALUE_ORIGIN_TYPES,
 } from "@real-estat-map/shared";
@@ -25,7 +28,16 @@ import {
   updateAdminSnapshot,
   upsertAdminProjectAddress,
 } from "@/lib/api";
-import { formatAddressLabel, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatAddressLabel,
+  formatCurrency,
+  formatDate,
+  formatDisclosureLevelLabel,
+  formatLifecycleStageLabel,
+  formatNumber,
+  formatPercent,
+  formatSectionKindLabel,
+} from "@/lib/format";
 import { AdminProjectLocationManager } from "./admin-project-location-manager";
 
 type Props = {
@@ -38,6 +50,8 @@ type ProjectFormState = {
   company_id: string;
   city: string;
   neighborhood: string;
+  lifecycle_stage: string;
+  disclosure_level: string;
   project_business_type: string;
   government_program_type: string;
   project_urban_renewal_type: string;
@@ -82,6 +96,9 @@ type SnapshotFormState = {
   snapshot_id: string;
   report_id: string;
   snapshot_date: string;
+  lifecycle_stage: string;
+  disclosure_level: string;
+  source_section_kind: string;
   total_units: string;
   marketed_units: string;
   sold_units_cumulative: string;
@@ -115,6 +132,8 @@ function buildProjectForm(project: AdminProjectDetail): ProjectFormState {
     company_id: project.company.id,
     city: project.location.city ?? "",
     neighborhood: project.location.neighborhood ?? "",
+    lifecycle_stage: project.classification.lifecycleStage ?? "",
+    disclosure_level: project.classification.disclosureLevel ?? "",
     project_business_type: project.classification.projectBusinessType,
     government_program_type: project.classification.governmentProgramType,
     project_urban_renewal_type: project.classification.projectUrbanRenewalType,
@@ -188,6 +207,9 @@ function buildSnapshotForm(project: AdminProjectDetail): SnapshotFormState {
     snapshot_id: "",
     report_id: "",
     snapshot_date: latest?.snapshotDate ?? "",
+    lifecycle_stage: latest?.lifecycleStage ?? project.classification.lifecycleStage ?? "",
+    disclosure_level: latest?.disclosureLevel ?? project.classification.disclosureLevel ?? "",
+    source_section_kind: latest?.sourceSectionKind ?? "",
     total_units: latest?.totalUnits?.toString() ?? "",
     marketed_units: latest?.marketedUnits?.toString() ?? "",
     sold_units_cumulative: latest?.soldUnitsCumulative?.toString() ?? "",
@@ -235,6 +257,9 @@ function buildSnapshotPayload(form: SnapshotFormState) {
   return {
     report_id: form.report_id || null,
     snapshot_date: form.snapshot_date,
+    lifecycle_stage: form.lifecycle_stage || null,
+    disclosure_level: form.disclosure_level || null,
+    source_section_kind: form.source_section_kind || null,
     total_units: toNullableNumber(form.total_units),
     marketed_units: toNullableNumber(form.marketed_units),
     sold_units_cumulative: toNullableNumber(form.sold_units_cumulative),
@@ -292,6 +317,8 @@ export function AdminProjectEditor({ companies, project }: Props) {
         company_id: projectForm.company_id,
         city: projectForm.city || null,
         neighborhood: projectForm.neighborhood || null,
+        lifecycle_stage: projectForm.lifecycle_stage || null,
+        disclosure_level: projectForm.disclosure_level || null,
         project_business_type: projectForm.project_business_type,
         government_program_type:
           projectForm.project_business_type === "govt_program" ? projectForm.government_program_type : "none",
@@ -308,6 +335,8 @@ export function AdminProjectEditor({ companies, project }: Props) {
           company_id: "manual",
           city: "manual",
           neighborhood: "manual",
+          lifecycle_stage: "manual",
+          disclosure_level: "manual",
           project_business_type: "manual",
           government_program_type: "manual",
           project_urban_renewal_type: "manual",
@@ -470,6 +499,9 @@ export function AdminProjectEditor({ companies, project }: Props) {
       snapshot_id: snapshot.id,
       report_id: snapshot.reportId,
       snapshot_date: snapshot.snapshotDate,
+      lifecycle_stage: snapshot.lifecycleStage ?? "",
+      disclosure_level: snapshot.disclosureLevel ?? "",
+      source_section_kind: snapshot.sourceSectionKind ?? "",
       total_units: snapshot.totalUnits?.toString() ?? "",
       marketed_units: snapshot.marketedUnits?.toString() ?? "",
       sold_units_cumulative: snapshot.soldUnitsCumulative?.toString() ?? "",
@@ -511,6 +543,13 @@ export function AdminProjectEditor({ companies, project }: Props) {
           <p className="panel-copy">
             {item.company.nameHe} | {item.isPubliclyVisible ? "public" : "internal"} | {item.snapshots.length} snapshots
           </p>
+          <div className="tag-row">
+            {item.classification.lifecycleStage ? <span className="tag">{formatLifecycleStageLabel(item.classification.lifecycleStage)}</span> : null}
+            {item.classification.disclosureLevel ? (
+              <span className="tag tag-accent">{formatDisclosureLevelLabel(item.classification.disclosureLevel)}</span>
+            ) : null}
+            {item.latestSnapshot?.sourceSectionKind ? <span className="tag">{formatSectionKindLabel(item.latestSnapshot.sourceSectionKind)}</span> : null}
+          </div>
         </div>
         {feedback ? <p className="muted-copy">{feedback}</p> : null}
         <div className="admin-form-grid">
@@ -535,6 +574,28 @@ export function AdminProjectEditor({ companies, project }: Props) {
           <label className="filter-field">
             <span>Neighborhood</span>
             <input value={projectForm.neighborhood} onChange={(event) => setProjectForm((current) => ({ ...current, neighborhood: event.target.value }))} />
+          </label>
+          <label className="filter-field">
+            <span>Lifecycle stage</span>
+            <select value={projectForm.lifecycle_stage} onChange={(event) => setProjectForm((current) => ({ ...current, lifecycle_stage: event.target.value }))}>
+              <option value="">Not set</option>
+              {PROJECT_LIFECYCLE_STAGES.map((value) => (
+                <option key={value} value={value}>
+                  {formatLifecycleStageLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Disclosure level</span>
+            <select value={projectForm.disclosure_level} onChange={(event) => setProjectForm((current) => ({ ...current, disclosure_level: event.target.value }))}>
+              <option value="">Not set</option>
+              {PROJECT_DISCLOSURE_LEVELS.map((value) => (
+                <option key={value} value={value}>
+                  {formatDisclosureLevelLabel(value)}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="filter-field">
             <span>Business type</span>
@@ -726,7 +787,19 @@ export function AdminProjectEditor({ companies, project }: Props) {
                 {item.snapshots.map((snapshot) => (
                   <tr key={snapshot.id}>
                     <td>{formatDate(snapshot.snapshotDate)}</td>
-                    <td>{snapshot.projectStatus ?? snapshot.permitStatus ?? "Unknown"}</td>
+                    <td>
+                      <div className="stacked-cell">
+                        <span>{snapshot.projectStatus ?? snapshot.permitStatus ?? "Unknown"}</span>
+                        <span className="muted-copy">
+                          {[
+                            snapshot.lifecycleStage ? formatLifecycleStageLabel(snapshot.lifecycleStage) : null,
+                            snapshot.disclosureLevel ? formatDisclosureLevelLabel(snapshot.disclosureLevel) : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" | ") || "No disclosure tags"}
+                        </span>
+                      </div>
+                    </td>
                     <td>{formatNumber(snapshot.totalUnits)}</td>
                     <td>{formatCurrency(snapshot.avgPricePerSqmCumulative)}</td>
                     <td>{formatPercent(snapshot.grossMarginExpectedPct)}</td>
@@ -763,6 +836,39 @@ export function AdminProjectEditor({ companies, project }: Props) {
           <label className="filter-field">
             <span>Snapshot date</span>
             <input type="date" value={snapshotForm.snapshot_date} onChange={(event) => setSnapshotForm((current) => ({ ...current, snapshot_date: event.target.value }))} />
+          </label>
+          <label className="filter-field">
+            <span>Lifecycle stage</span>
+            <select value={snapshotForm.lifecycle_stage} onChange={(event) => setSnapshotForm((current) => ({ ...current, lifecycle_stage: event.target.value }))}>
+              <option value="">Use project default</option>
+              {PROJECT_LIFECYCLE_STAGES.map((value) => (
+                <option key={value} value={value}>
+                  {formatLifecycleStageLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Disclosure level</span>
+            <select value={snapshotForm.disclosure_level} onChange={(event) => setSnapshotForm((current) => ({ ...current, disclosure_level: event.target.value }))}>
+              <option value="">Use project default</option>
+              {PROJECT_DISCLOSURE_LEVELS.map((value) => (
+                <option key={value} value={value}>
+                  {formatDisclosureLevelLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Section kind</span>
+            <select value={snapshotForm.source_section_kind} onChange={(event) => setSnapshotForm((current) => ({ ...current, source_section_kind: event.target.value }))}>
+              <option value="">Not set</option>
+              {SOURCE_SECTION_KINDS.map((value) => (
+                <option key={value} value={value}>
+                  {formatSectionKindLabel(value)}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="filter-field">
             <span>Total units</span>

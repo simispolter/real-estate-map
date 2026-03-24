@@ -26,6 +26,31 @@ export const LOCATION_CONFIDENCE_LEVELS = [
   "city_only",
   "unknown",
 ] as const;
+export const PROJECT_LIFECYCLE_STAGES = [
+  "under_construction",
+  "completed_unsold_tail",
+  "completed_delivered",
+  "planning_advanced",
+  "urban_renewal_pipeline",
+  "land_reserve",
+] as const;
+export const PROJECT_DISCLOSURE_LEVELS = [
+  "material_very_high",
+  "operational_full",
+  "inventory_tail",
+  "pipeline_signature",
+  "land_reserve",
+  "minimal_reference",
+] as const;
+export const SOURCE_SECTION_KINDS = [
+  "construction",
+  "planning",
+  "completed",
+  "land_reserve",
+  "urban_renewal",
+  "material_project",
+  "summary_only",
+] as const;
 
 export const PROJECT_STATUSES = [
   "planning",
@@ -72,6 +97,9 @@ export type ProjectBusinessType = (typeof PROJECT_BUSINESS_TYPES)[number];
 export type GovernmentProgramType = (typeof GOVERNMENT_PROGRAM_TYPES)[number];
 export type UrbanRenewalType = (typeof URBAN_RENEWAL_TYPES)[number];
 export type LocationConfidence = (typeof LOCATION_CONFIDENCE_LEVELS)[number];
+export type ProjectLifecycleStage = (typeof PROJECT_LIFECYCLE_STAGES)[number];
+export type ProjectDisclosureLevel = (typeof PROJECT_DISCLOSURE_LEVELS)[number];
+export type SourceSectionKind = (typeof SOURCE_SECTION_KINDS)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type PermitStatus = (typeof PERMIT_STATUSES)[number];
 export type ConfidenceLevel = (typeof CONFIDENCE_LEVELS)[number];
@@ -126,6 +154,8 @@ export interface ProjectListItem {
   company: ProjectCompanySummary;
   city: string | null;
   neighborhood: string | null;
+  lifecycleStage: ProjectLifecycleStage | string | null;
+  disclosureLevel: ProjectDisclosureLevel | string | null;
   projectBusinessType: ProjectBusinessType | string;
   governmentProgramType: GovernmentProgramType | string;
   projectUrbanRenewalType: UrbanRenewalType | string;
@@ -233,6 +263,8 @@ export interface ProjectDetail {
     company: ProjectCompanySummary;
   };
   classification: {
+    lifecycleStage: string | null;
+    disclosureLevel: string | null;
     projectBusinessType: string;
     governmentProgramType: string;
     projectUrbanRenewalType: string;
@@ -254,6 +286,9 @@ export interface ProjectDetail {
   latestSnapshot: {
     snapshotId: string;
     snapshotDate: string;
+    lifecycleStage: string | null;
+    disclosureLevel: string | null;
+    sourceSectionKind: string | null;
     projectStatus: string | null;
     permitStatus: string | null;
     totalUnits: number | null;
@@ -264,6 +299,7 @@ export interface ProjectDetail {
     grossProfitTotalExpected: number | null;
     grossMarginExpectedPct: number | null;
     trust: Record<string, ValueTrust>;
+    extensionBlocks: Record<string, Record<string, unknown>>;
   };
   derivedMetrics: {
     sellThroughRate: number | null;
@@ -347,6 +383,8 @@ export interface MapFeatureItem {
     companyName: string;
     city: string | null;
     neighborhood: string | null;
+    lifecycleStage: string | null;
+    disclosureLevel: string | null;
     projectBusinessType: string;
     governmentProgramType: string;
     projectUrbanRenewalType: string;
@@ -444,6 +482,8 @@ export interface AdminProjectListItem {
   canonicalName: string;
   company: ProjectCompanySummary;
   city: string | null;
+  lifecycleStage: string | null;
+  disclosureLevel: string | null;
   projectBusinessType: string;
   governmentProgramType: string;
   projectUrbanRenewalType: string;
@@ -496,6 +536,9 @@ export interface AdminSnapshotSummary {
   reportId: string;
   reportName: string | null;
   snapshotDate: string;
+  lifecycleStage: string | null;
+  disclosureLevel: string | null;
+  sourceSectionKind: string | null;
   projectStatus: string | null;
   permitStatus: string | null;
   totalUnits: number | null;
@@ -509,6 +552,7 @@ export interface AdminSnapshotSummary {
   chronologyNotes: string | null;
   notesInternal: string | null;
   diffSummary: Record<string, { before: string | null; after: string | null; changed: boolean | null }>;
+  extensionBlocks: Record<string, Record<string, unknown>>;
 }
 
 export interface AdminProjectDetail {
@@ -572,6 +616,9 @@ export interface AdminCandidateSummary {
   candidateProjectName: string;
   city: string | null;
   neighborhood: string | null;
+  candidateLifecycleStage: string | null;
+  candidateDisclosureLevel: string | null;
+  candidateSectionKind: string | null;
   matchingStatus: MatchStatus | string;
   publishStatus: StagingPublishStatus | string;
   confidenceLevel: ConfidenceLevel | string;
@@ -589,6 +636,9 @@ export interface AdminFieldCandidate {
   normalizedValue: string | null;
   sourcePage: number | null;
   sourceSection: string | null;
+  sourceTableName: string | null;
+  sourceRowLabel: string | null;
+  extractionProfileKey: string | null;
   valueOriginType: ValueOriginType | string;
   confidenceLevel: ConfidenceLevel | string;
   reviewStatus: string;
@@ -821,6 +871,47 @@ export interface AdminParserRun {
   updatedAt: string;
 }
 
+export interface AdminQaDistributionItem {
+  key: string;
+  count: number;
+}
+
+export interface AdminQaMissingFieldItem {
+  fieldName: string;
+  missingCount: number;
+}
+
+export interface AdminQaFamilyCoverageItem {
+  sectionKind: string;
+  sectionCount: number;
+  candidateCount: number;
+  matchedExistingCount: number;
+  newProjectCount: number;
+  ambiguousCount: number;
+  ignoredCount: number;
+}
+
+export interface AdminReportQa {
+  reportId: string;
+  summary: {
+    totalCandidates: number;
+    projectsDetected: number;
+    matchedExistingProjects: number;
+    newProjectsNeeded: number;
+    ambiguousCandidates: number;
+    rejectedOrIgnoredCandidates: number;
+    publishedCandidates: number;
+    missingKeyFieldTotal: number;
+    latestParserSectionsFound: number;
+    latestParserCandidateCount: number;
+  };
+  lifecycleStageDistribution: AdminQaDistributionItem[];
+  disclosureLevelDistribution: AdminQaDistributionItem[];
+  familyCoverage: AdminQaFamilyCoverageItem[];
+  missingKeyFields: AdminQaMissingFieldItem[];
+  latestParserRun: AdminParserRun | null;
+}
+
 export interface AdminAnomalyItem {
   id: string;
   anomalyType: string;
@@ -895,6 +986,13 @@ export interface AdminCandidateDetail {
   candidateProjectName: string;
   city: string | null;
   neighborhood: string | null;
+  candidateLifecycleStage: string | null;
+  candidateDisclosureLevel: string | null;
+  candidateSectionKind: string | null;
+  candidateMaterialityFlag: boolean | null;
+  sourceTableName: string | null;
+  sourceRowLabel: string | null;
+  extractionProfileKey: string | null;
   projectBusinessType: string | null;
   governmentProgramType: string;
   projectUrbanRenewalType: string;
@@ -921,6 +1019,7 @@ export interface AdminCandidateDetail {
   matchSuggestions: MatchSuggestion[];
   compareRows: CandidateCompareRow[];
   diffSummary: CandidateDiffItem[];
+  extensionBlocks: Record<string, Record<string, unknown>>;
   createdAt: string;
   updatedAt: string;
 }

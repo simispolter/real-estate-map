@@ -55,6 +55,58 @@ export function formatEnumLabel(value: string | null | undefined) {
     .join(" ");
 }
 
+const LIFECYCLE_STAGE_LABELS: Record<string, string> = {
+  under_construction: "Under construction",
+  completed_unsold_tail: "Completed unsold tail",
+  completed_delivered: "Completed delivered",
+  planning_advanced: "Advanced planning",
+  urban_renewal_pipeline: "Urban renewal pipeline",
+  land_reserve: "Land reserve",
+};
+
+const DISCLOSURE_LEVEL_LABELS: Record<string, string> = {
+  material_very_high: "Material project",
+  operational_full: "Operational full disclosure",
+  inventory_tail: "Completed inventory tail",
+  pipeline_signature: "Pipeline signature disclosure",
+  land_reserve: "Land reserve disclosure",
+  minimal_reference: "Minimal reference",
+};
+
+const SECTION_KIND_LABELS: Record<string, string> = {
+  construction: "Construction section",
+  planning: "Planning section",
+  completed: "Completed inventory section",
+  land_reserve: "Land reserve section",
+  urban_renewal: "Urban renewal section",
+  material_project: "Material project section",
+  summary_only: "Summary-only mention",
+};
+
+export function formatLifecycleStageLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not disclosed";
+  }
+
+  return LIFECYCLE_STAGE_LABELS[value] ?? formatEnumLabel(value);
+}
+
+export function formatDisclosureLevelLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not disclosed";
+  }
+
+  return DISCLOSURE_LEVEL_LABELS[value] ?? formatEnumLabel(value);
+}
+
+export function formatSectionKindLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not disclosed";
+  }
+
+  return SECTION_KIND_LABELS[value] ?? formatEnumLabel(value);
+}
+
 export function formatLocationQuality(value: string | null | undefined) {
   if (!value) {
     return "Unknown";

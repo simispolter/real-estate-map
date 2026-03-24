@@ -41,6 +41,8 @@ class ProjectListItem(BaseModel):
     company: ProjectCompanySummary
     city: str | None = None
     neighborhood: str | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str
     government_program_type: str
     project_urban_renewal_type: str
@@ -74,6 +76,8 @@ class ProjectIdentity(BaseModel):
 
 
 class ProjectClassification(BaseModel):
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str
     government_program_type: str
     project_urban_renewal_type: str
@@ -112,6 +116,9 @@ class ProjectDisplayGeometryResponse(BaseModel):
 class ProjectSnapshotDetail(BaseModel):
     snapshot_id: UUID
     snapshot_date: date
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
+    source_section_kind: str | None = None
     project_status: str | None = None
     permit_status: str | None = None
     total_units: int | None = None
@@ -122,6 +129,7 @@ class ProjectSnapshotDetail(BaseModel):
     gross_profit_total_expected: Decimal | None = None
     gross_margin_expected_pct: Decimal | None = None
     trust: dict[str, ValueTrustResponse] = Field(default_factory=dict)
+    extension_blocks: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class ProjectDerivedMetrics(BaseModel):
@@ -290,6 +298,8 @@ class MapProjectProperties(BaseModel):
     company_name: str
     city: str | None = None
     neighborhood: str | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str
     government_program_type: str
     project_urban_renewal_type: str

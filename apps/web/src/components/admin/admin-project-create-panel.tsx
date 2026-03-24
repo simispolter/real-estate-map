@@ -4,12 +4,15 @@ import type { CompanyListItem } from "@real-estat-map/shared";
 import {
   GOVERNMENT_PROGRAM_TYPES,
   LOCATION_CONFIDENCE_LEVELS,
+  PROJECT_DISCLOSURE_LEVELS,
   PROJECT_BUSINESS_TYPES,
+  PROJECT_LIFECYCLE_STAGES,
   URBAN_RENEWAL_TYPES,
 } from "@real-estat-map/shared";
 import { useState, useTransition } from "react";
 
 import { createAdminProject } from "@/lib/api";
+import { formatDisclosureLevelLabel, formatLifecycleStageLabel } from "@/lib/format";
 
 type Props = {
   companies: CompanyListItem[];
@@ -20,6 +23,8 @@ type FormState = {
   company_id: string;
   city: string;
   neighborhood: string;
+  lifecycle_stage: string;
+  disclosure_level: string;
   project_business_type: string;
   government_program_type: string;
   project_urban_renewal_type: string;
@@ -36,6 +41,8 @@ export function AdminProjectCreatePanel({ companies }: Props) {
     company_id: companies[0]?.id ?? "",
     city: "",
     neighborhood: "",
+    lifecycle_stage: "",
+    disclosure_level: "",
     project_business_type: "regular_dev",
     government_program_type: "none",
     project_urban_renewal_type: "none",
@@ -60,6 +67,8 @@ export function AdminProjectCreatePanel({ companies }: Props) {
         company_id: form.company_id,
         city: form.city || null,
         neighborhood: form.neighborhood || null,
+        lifecycle_stage: form.lifecycle_stage || null,
+        disclosure_level: form.disclosure_level || null,
         project_business_type: form.project_business_type,
         government_program_type: form.project_business_type === "govt_program" ? form.government_program_type : "none",
         project_urban_renewal_type:
@@ -115,6 +124,28 @@ export function AdminProjectCreatePanel({ companies }: Props) {
         <label className="filter-field">
           <span>Neighborhood</span>
           <input value={form.neighborhood} onChange={(event) => setField("neighborhood", event.target.value)} />
+        </label>
+        <label className="filter-field">
+          <span>Lifecycle stage</span>
+          <select value={form.lifecycle_stage} onChange={(event) => setField("lifecycle_stage", event.target.value)}>
+            <option value="">Not set</option>
+            {PROJECT_LIFECYCLE_STAGES.map((value) => (
+              <option key={value} value={value}>
+                {formatLifecycleStageLabel(value)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>Disclosure level</span>
+          <select value={form.disclosure_level} onChange={(event) => setField("disclosure_level", event.target.value)}>
+            <option value="">Not set</option>
+            {PROJECT_DISCLOSURE_LEVELS.map((value) => (
+              <option key={value} value={value}>
+                {formatDisclosureLevelLabel(value)}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="filter-field">
           <span>Business type</span>

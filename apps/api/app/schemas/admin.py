@@ -69,6 +69,9 @@ class AdminSnapshotSummary(BaseModel):
     report_id: UUID
     report_name: str | None = None
     snapshot_date: date
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
+    source_section_kind: str | None = None
     project_status: str | None = None
     permit_status: str | None = None
     total_units: int | None = None
@@ -82,6 +85,7 @@ class AdminSnapshotSummary(BaseModel):
     chronology_notes: str | None = None
     notes_internal: str | None = None
     diff_summary: dict[str, dict[str, str | bool | None]] = Field(default_factory=dict)
+    extension_blocks: dict[str, dict[str, object | None]] = Field(default_factory=dict)
 
 
 class AdminProjectListItem(BaseModel):
@@ -89,6 +93,8 @@ class AdminProjectListItem(BaseModel):
     canonical_name: str
     company: ProjectCompanySummary
     city: str | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str
     government_program_type: str
     project_urban_renewal_type: str
@@ -134,6 +140,8 @@ class AdminProjectCreateRequest(BaseModel):
     company_id: UUID
     city: str | None = None
     neighborhood: str | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str
     government_program_type: str = "none"
     project_urban_renewal_type: str = "none"
@@ -148,6 +156,8 @@ class AdminProjectCreateRequest(BaseModel):
 class AdminProjectUpdateRequest(BaseModel):
     canonical_name: str | None = None
     company_id: UUID | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str | None = None
     government_program_type: str | None = None
     project_urban_renewal_type: str | None = None
@@ -215,6 +225,9 @@ class AdminProjectDisplayGeometryUpdateRequest(BaseModel):
 class AdminSnapshotCreateRequest(BaseModel):
     report_id: UUID | None = None
     snapshot_date: date
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
+    source_section_kind: str | None = None
     total_units: int | None = None
     marketed_units: int | None = None
     sold_units_cumulative: int | None = None
@@ -233,6 +246,9 @@ class AdminSnapshotCreateRequest(BaseModel):
 class AdminSnapshotUpdateRequest(BaseModel):
     report_id: UUID | None = None
     snapshot_date: date | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
+    source_section_kind: str | None = None
     total_units: int | None = None
     marketed_units: int | None = None
     sold_units_cumulative: int | None = None

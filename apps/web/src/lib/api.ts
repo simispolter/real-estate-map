@@ -15,6 +15,7 @@ import type {
   AdminIntakeListItem,
   AdminOpsDashboard,
   AdminParserRun,
+  AdminReportQa,
   AdminProjectAliasItem,
   AdminProjectDetail,
   AdminProjectListItem,
@@ -170,6 +171,13 @@ function safeObject(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+function mapExtensionBlocks(value: unknown): Record<string, Record<string, unknown>> {
+  const source = safeObject(value);
+  return Object.fromEntries(
+    Object.entries(source).map(([key, raw]) => [key, safeObject(raw)]),
+  );
+}
+
 function stringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
 }
@@ -213,6 +221,8 @@ function mapProjectListItem(item: Record<string, unknown>, index: number): Proje
     },
     city: stringOrNull(item.city),
     neighborhood: stringOrNull(item.neighborhood),
+    lifecycleStage: stringOrNull(item.lifecycle_stage),
+    disclosureLevel: stringOrNull(item.disclosure_level),
     projectBusinessType: stringOrNull(item.project_business_type) ?? "unknown",
     governmentProgramType: stringOrNull(item.government_program_type) ?? "none",
     projectUrbanRenewalType: stringOrNull(item.project_urban_renewal_type) ?? "none",
@@ -372,6 +382,9 @@ function mapAdminSnapshotSummary(item: Record<string, unknown>, index: number): 
     reportId: stringOrNull(item.report_id) ?? "",
     reportName: stringOrNull(item.report_name),
     snapshotDate: stringOrNull(item.snapshot_date) ?? "",
+    lifecycleStage: stringOrNull(item.lifecycle_stage),
+    disclosureLevel: stringOrNull(item.disclosure_level),
+    sourceSectionKind: stringOrNull(item.source_section_kind),
     projectStatus: stringOrNull(item.project_status),
     permitStatus: stringOrNull(item.permit_status),
     totalUnits: numberOrNull(item.total_units),
@@ -384,6 +397,7 @@ function mapAdminSnapshotSummary(item: Record<string, unknown>, index: number): 
     chronologyStatus: stringOrNull(item.chronology_status) ?? "ok",
     chronologyNotes: stringOrNull(item.chronology_notes),
     notesInternal: stringOrNull(item.notes_internal),
+    extensionBlocks: mapExtensionBlocks(item.extension_blocks),
     diffSummary: Object.fromEntries(
       Object.entries(diffSummary).map(([fieldName, raw]) => {
         const rawObject = safeObject(raw);
@@ -408,6 +422,9 @@ function mapAdminFieldCandidate(item: Record<string, unknown>, index: number): A
     normalizedValue: stringOrNull(item.normalized_value),
     sourcePage: numberOrNull(item.source_page),
     sourceSection: stringOrNull(item.source_section),
+    sourceTableName: stringOrNull(item.source_table_name),
+    sourceRowLabel: stringOrNull(item.source_row_label),
+    extractionProfileKey: stringOrNull(item.extraction_profile_key),
     valueOriginType: stringOrNull(item.value_origin_type) ?? "unknown",
     confidenceLevel: stringOrNull(item.confidence_level) ?? "low",
     reviewStatus: stringOrNull(item.review_status) ?? "pending",
@@ -444,6 +461,9 @@ function mapAdminCandidateSummary(item: Record<string, unknown>, index: number):
     candidateProjectName: stringOrNull(item.candidate_project_name) ?? "Unnamed candidate",
     city: stringOrNull(item.city),
     neighborhood: stringOrNull(item.neighborhood),
+    candidateLifecycleStage: stringOrNull(item.candidate_lifecycle_stage),
+    candidateDisclosureLevel: stringOrNull(item.candidate_disclosure_level),
+    candidateSectionKind: stringOrNull(item.candidate_section_kind),
     matchingStatus: stringOrNull(item.matching_status) ?? "unmatched",
     publishStatus: stringOrNull(item.publish_status) ?? "draft",
     confidenceLevel: stringOrNull(item.confidence_level) ?? "low",
@@ -520,6 +540,8 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
       },
     },
     classification: {
+      lifecycleStage: stringOrNull(classification.lifecycle_stage),
+      disclosureLevel: stringOrNull(classification.disclosure_level),
       projectBusinessType: stringOrNull(classification.project_business_type) ?? "unknown",
       governmentProgramType: stringOrNull(classification.government_program_type) ?? "none",
       projectUrbanRenewalType: stringOrNull(classification.project_urban_renewal_type) ?? "none",
@@ -541,6 +563,9 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
     latestSnapshot: {
       snapshotId: stringOrNull(latestSnapshot.snapshot_id) ?? "",
       snapshotDate: stringOrNull(latestSnapshot.snapshot_date) ?? "",
+      lifecycleStage: stringOrNull(latestSnapshot.lifecycle_stage),
+      disclosureLevel: stringOrNull(latestSnapshot.disclosure_level),
+      sourceSectionKind: stringOrNull(latestSnapshot.source_section_kind),
       projectStatus: stringOrNull(latestSnapshot.project_status),
       permitStatus: stringOrNull(latestSnapshot.permit_status),
       totalUnits: numberOrNull(latestSnapshot.total_units),
@@ -551,6 +576,7 @@ function mapProjectDetail(response: Record<string, unknown>, fallbackId: string)
       grossProfitTotalExpected: numberOrNull(latestSnapshot.gross_profit_total_expected),
       grossMarginExpectedPct: numberOrNull(latestSnapshot.gross_margin_expected_pct),
       trust: mapTrustMap(latestSnapshot.trust),
+      extensionBlocks: mapExtensionBlocks(latestSnapshot.extension_blocks),
     },
     derivedMetrics: {
       sellThroughRate: numberOrNull(derivedMetrics.sell_through_rate),
@@ -749,6 +775,8 @@ export async function getMapProjects(filters: Record<string, string | undefined>
         companyName: stringOrNull(properties.company_name) ?? "Unknown company",
         city: stringOrNull(properties.city),
         neighborhood: stringOrNull(properties.neighborhood),
+        lifecycleStage: stringOrNull(properties.lifecycle_stage),
+        disclosureLevel: stringOrNull(properties.disclosure_level),
         projectBusinessType: stringOrNull(properties.project_business_type) ?? "unknown",
         governmentProgramType: stringOrNull(properties.government_program_type) ?? "none",
         projectUrbanRenewalType: stringOrNull(properties.project_urban_renewal_type) ?? "none",
@@ -869,6 +897,8 @@ export async function getAdminProjects(filters: Record<string, string | undefine
       nameHe: stringOrNull(safeObject(item.company).name_he) ?? "Unknown company",
     },
     city: stringOrNull(item.city),
+    lifecycleStage: stringOrNull(item.lifecycle_stage),
+    disclosureLevel: stringOrNull(item.disclosure_level),
     projectBusinessType: stringOrNull(item.project_business_type) ?? "unknown",
     governmentProgramType: stringOrNull(item.government_program_type) ?? "none",
     projectUrbanRenewalType: stringOrNull(item.project_urban_renewal_type) ?? "none",
@@ -908,6 +938,8 @@ export async function getAdminProjectDetail(id: string) {
       nameHe: stringOrNull(safeObject(response.company).name_he) ?? "Unknown company",
     },
     classification: {
+      lifecycleStage: stringOrNull(classification.lifecycle_stage),
+      disclosureLevel: stringOrNull(classification.disclosure_level),
       projectBusinessType: stringOrNull(classification.project_business_type) ?? "unknown",
       governmentProgramType: stringOrNull(classification.government_program_type) ?? "none",
       projectUrbanRenewalType: stringOrNull(classification.project_urban_renewal_type) ?? "none",
@@ -931,6 +963,9 @@ export async function getAdminProjectDetail(id: string) {
         ? {
             snapshotId: stringOrNull(latestSnapshot.snapshot_id) ?? "",
             snapshotDate: stringOrNull(latestSnapshot.snapshot_date) ?? "",
+            lifecycleStage: stringOrNull(latestSnapshot.lifecycle_stage),
+            disclosureLevel: stringOrNull(latestSnapshot.disclosure_level),
+            sourceSectionKind: stringOrNull(latestSnapshot.source_section_kind),
             projectStatus: stringOrNull(latestSnapshot.project_status),
             permitStatus: stringOrNull(latestSnapshot.permit_status),
             totalUnits: numberOrNull(latestSnapshot.total_units),
@@ -941,6 +976,7 @@ export async function getAdminProjectDetail(id: string) {
             grossProfitTotalExpected: numberOrNull(latestSnapshot.gross_profit_total_expected),
             grossMarginExpectedPct: numberOrNull(latestSnapshot.gross_margin_expected_pct),
             trust: mapTrustMap(latestSnapshot.trust),
+            extensionBlocks: mapExtensionBlocks(latestSnapshot.extension_blocks),
           }
         : null,
     addresses: safeArray<Record<string, unknown>>(response.addresses).map(mapAddress),
@@ -1213,6 +1249,14 @@ export async function getAdminReportParserRuns(reportId: string) {
   };
 }
 
+export async function getAdminReportQa(reportId: string) {
+  const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/reports/${reportId}/qa`);
+  if (response === null) {
+    return { item: null, state: "error" as DataState };
+  }
+  return { item: mapAdminReportQa(response), state: "ready" as DataState };
+}
+
 export async function createAdminCandidate(reportId: string, payload: Record<string, unknown>) {
   const response = await apiFetch<Record<string, unknown>>(`/api/v1/admin/reports/${reportId}/candidates`, {
     method: "POST",
@@ -1239,6 +1283,14 @@ export async function getAdminCandidateDetail(id: string) {
     candidateProjectName: stringOrNull(response.candidate_project_name) ?? "Unnamed candidate",
     city: stringOrNull(response.city),
     neighborhood: stringOrNull(response.neighborhood),
+    candidateLifecycleStage: stringOrNull(response.candidate_lifecycle_stage),
+    candidateDisclosureLevel: stringOrNull(response.candidate_disclosure_level),
+    candidateSectionKind: stringOrNull(response.candidate_section_kind),
+    candidateMaterialityFlag:
+      typeof response.candidate_materiality_flag === "boolean" ? response.candidate_materiality_flag : null,
+    sourceTableName: stringOrNull(response.source_table_name),
+    sourceRowLabel: stringOrNull(response.source_row_label),
+    extractionProfileKey: stringOrNull(response.extraction_profile_key),
     projectBusinessType: stringOrNull(response.project_business_type),
     governmentProgramType: stringOrNull(response.government_program_type) ?? "none",
     projectUrbanRenewalType: stringOrNull(response.project_urban_renewal_type) ?? "none",
@@ -1265,6 +1317,7 @@ export async function getAdminCandidateDetail(id: string) {
     matchSuggestions: safeArray<Record<string, unknown>>(response.match_suggestions).map(mapMatchSuggestion),
     compareRows: safeArray<Record<string, unknown>>(response.compare_rows).map(mapCandidateCompareRow),
     diffSummary: safeArray<Record<string, unknown>>(response.diff_summary).map(mapCandidateDiffItem),
+    extensionBlocks: mapExtensionBlocks(response.extension_blocks),
     createdAt: stringOrNull(response.created_at) ?? "",
     updatedAt: stringOrNull(response.updated_at) ?? "",
   };
@@ -1487,6 +1540,54 @@ function mapAdminParserRun(item: Record<string, unknown>, index: number): AdminP
     finishedAt: stringOrNull(item.finished_at),
     createdAt: stringOrNull(item.created_at) ?? "",
     updatedAt: stringOrNull(item.updated_at) ?? "",
+  };
+}
+
+function mapAdminReportQa(item: Record<string, unknown>): AdminReportQa {
+  const summary = safeObject(item.summary);
+  return {
+    reportId: stringOrNull(item.report_id) ?? "",
+    summary: {
+      totalCandidates: numberOrNull(summary.total_candidates) ?? 0,
+      projectsDetected: numberOrNull(summary.projects_detected) ?? 0,
+      matchedExistingProjects: numberOrNull(summary.matched_existing_projects) ?? 0,
+      newProjectsNeeded: numberOrNull(summary.new_projects_needed) ?? 0,
+      ambiguousCandidates: numberOrNull(summary.ambiguous_candidates) ?? 0,
+      rejectedOrIgnoredCandidates: numberOrNull(summary.rejected_or_ignored_candidates) ?? 0,
+      publishedCandidates: numberOrNull(summary.published_candidates) ?? 0,
+      missingKeyFieldTotal: numberOrNull(summary.missing_key_field_total) ?? 0,
+      latestParserSectionsFound: numberOrNull(summary.latest_parser_sections_found) ?? 0,
+      latestParserCandidateCount: numberOrNull(summary.latest_parser_candidate_count) ?? 0,
+    },
+    lifecycleStageDistribution: safeArray<Record<string, unknown>>(item.lifecycle_stage_distribution).map(
+      (row, index) => ({
+        key: stringOrNull(row.key) ?? `lifecycle-${index}`,
+        count: numberOrNull(row.count) ?? 0,
+      }),
+    ),
+    disclosureLevelDistribution: safeArray<Record<string, unknown>>(item.disclosure_level_distribution).map(
+      (row, index) => ({
+        key: stringOrNull(row.key) ?? `disclosure-${index}`,
+        count: numberOrNull(row.count) ?? 0,
+      }),
+    ),
+    familyCoverage: safeArray<Record<string, unknown>>(item.family_coverage).map((row, index) => ({
+      sectionKind: stringOrNull(row.section_kind) ?? `family-${index}`,
+      sectionCount: numberOrNull(row.section_count) ?? 0,
+      candidateCount: numberOrNull(row.candidate_count) ?? 0,
+      matchedExistingCount: numberOrNull(row.matched_existing_count) ?? 0,
+      newProjectCount: numberOrNull(row.new_project_count) ?? 0,
+      ambiguousCount: numberOrNull(row.ambiguous_count) ?? 0,
+      ignoredCount: numberOrNull(row.ignored_count) ?? 0,
+    })),
+    missingKeyFields: safeArray<Record<string, unknown>>(item.missing_key_fields).map((row, index) => ({
+      fieldName: stringOrNull(row.field_name) ?? `field-${index}`,
+      missingCount: numberOrNull(row.missing_count) ?? 0,
+    })),
+    latestParserRun:
+      item.latest_parser_run && typeof item.latest_parser_run === "object"
+        ? mapAdminParserRun(item.latest_parser_run as Record<string, unknown>, 0)
+        : null,
   };
 }
 

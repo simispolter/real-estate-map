@@ -8,10 +8,13 @@ import {
   formatAddressLabel,
   formatCurrency,
   formatDate,
+  formatDisclosureLevelLabel,
   formatEnumLabel,
+  formatLifecycleStageLabel,
   formatLocationQuality,
   formatNumber,
   formatPercent,
+  formatSectionKindLabel,
 } from "@/lib/format";
 
 export const revalidate = 120;
@@ -36,6 +39,19 @@ function locationExplanation(value: string) {
     return "The public map uses a city centroid fallback for this project because no stronger location is currently trusted.";
   }
   return "Location quality is still weak, so this project should be read primarily through its company and source context.";
+}
+
+function formatExtensionValue(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "Not disclosed";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  if (typeof value === "number") {
+    return formatNumber(value);
+  }
+  return String(value);
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: PageProps) {
@@ -83,6 +99,8 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
             {project.location.neighborhood ? ` · ${project.location.neighborhood}` : ""}
           </p>
           <div className="tag-row">
+            {project.classification.lifecycleStage ? <Tag>{formatLifecycleStageLabel(project.classification.lifecycleStage)}</Tag> : null}
+            {project.classification.disclosureLevel ? <Tag tone="accent">{formatDisclosureLevelLabel(project.classification.disclosureLevel)}</Tag> : null}
             <Tag>{formatEnumLabel(project.classification.projectBusinessType)}</Tag>
             <Tag>{formatEnumLabel(project.classification.governmentProgramType)}</Tag>
             <Tag>{formatEnumLabel(project.classification.projectUrbanRenewalType)}</Tag>
@@ -118,6 +136,10 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
                 <strong>Latest snapshot</strong>
                 <p className="panel-copy">{formatDate(project.latestSnapshot.snapshotDate)}</p>
               </div>
+              <div>
+                <strong>Snapshot section</strong>
+                <p className="panel-copy">{formatSectionKindLabel(project.latestSnapshot.sourceSectionKind)}</p>
+              </div>
             </div>
           </div>
         </aside>
@@ -147,6 +169,14 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
 
         <Panel eyebrow="Status" title="Classification and status">
           <div className="detail-list">
+            <div>
+              <strong>Lifecycle stage</strong>
+              <p className="panel-copy">{formatLifecycleStageLabel(project.classification.lifecycleStage)}</p>
+            </div>
+            <div>
+              <strong>Disclosure depth</strong>
+              <p className="panel-copy">{formatDisclosureLevelLabel(project.classification.disclosureLevel)}</p>
+            </div>
             <div>
               <strong>Business type</strong>
               <p className="panel-copy">{formatEnumLabel(project.classification.projectBusinessType)}</p>
@@ -211,6 +241,26 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
           </div>
         </div>
       </Panel>
+
+      {Object.keys(project.latestSnapshot.extensionBlocks).length > 0 ? (
+        <Panel eyebrow="Disclosure" title="Extended disclosure blocks">
+          <div className="detail-grid">
+            {Object.entries(project.latestSnapshot.extensionBlocks).map(([blockKey, blockValues]) => (
+              <div className="address-card" key={blockKey}>
+                <strong>{formatEnumLabel(blockKey)}</strong>
+                <div className="detail-list">
+                  {Object.entries(blockValues).map(([fieldKey, rawValue]) => (
+                    <div key={`${blockKey}-${fieldKey}`}>
+                      <strong>{formatEnumLabel(fieldKey)}</strong>
+                      <p className="panel-copy">{formatExtensionValue(rawValue)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <section className="detail-grid">
         <Panel eyebrow="History" title="Snapshot and history summary">

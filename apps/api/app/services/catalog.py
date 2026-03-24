@@ -11,7 +11,18 @@ from uuid import UUID
 from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Company, FieldProvenance, ProjectAddress, ProjectMaster, ProjectSnapshot, Report
+from app.models import (
+    Company,
+    FieldProvenance,
+    ProjectAddress,
+    ProjectLandReserveDetail,
+    ProjectMaster,
+    ProjectMaterialDisclosure,
+    ProjectSensitivityScenario,
+    ProjectSnapshot,
+    ProjectUrbanRenewalDetail,
+    Report,
+)
 from app.services.spatial import city_centroid_geometry
 from app.services.spatial import location_quality as spatial_location_quality
 
@@ -48,6 +59,9 @@ def _latest_snapshot_subquery() -> Select:
             ProjectSnapshot.project_id.label("project_id"),
             ProjectSnapshot.report_id.label("report_id"),
             ProjectSnapshot.snapshot_date.label("snapshot_date"),
+            ProjectSnapshot.lifecycle_stage.label("lifecycle_stage"),
+            ProjectSnapshot.disclosure_level.label("disclosure_level"),
+            ProjectSnapshot.source_section_kind.label("source_section_kind"),
             ProjectSnapshot.project_status.label("project_status"),
             ProjectSnapshot.permit_status.label("permit_status"),
             ProjectSnapshot.total_units.label("total_units"),
@@ -101,6 +115,117 @@ def _margin_signal(value: Decimal | None) -> str | None:
     return "weak"
 
 
+def _serialize_extension_row(row: object | None, fields: tuple[str, ...]) -> dict[str, object | None] | None:
+    if row is None:
+        return None
+    payload = {field_name: getattr(row, field_name) for field_name in fields if getattr(row, field_name) is not None}
+    return payload or None
+
+
+async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, snapshot_id: UUID) -> dict[str, dict[str, object | None]]:
+    material = (
+        await session.execute(
+            select(ProjectMaterialDisclosure).where(
+                ProjectMaterialDisclosure.project_id == project_id,
+                ProjectMaterialDisclosure.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    sensitivity = (
+        await session.execute(
+            select(ProjectSensitivityScenario).where(
+                ProjectSensitivityScenario.project_id == project_id,
+                ProjectSensitivityScenario.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    urban_renewal = (
+        await session.execute(
+            select(ProjectUrbanRenewalDetail).where(
+                ProjectUrbanRenewalDetail.project_id == project_id,
+                ProjectUrbanRenewalDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    land_reserve = (
+        await session.execute(
+            select(ProjectLandReserveDetail).where(
+                ProjectLandReserveDetail.project_id == project_id,
+                ProjectLandReserveDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    return {
+        key: value
+        for key, value in {
+            "material_disclosure": _serialize_extension_row(
+                material,
+                (
+                    "financing_institution",
+                    "facility_amount",
+                    "utilization_amount",
+                    "unused_capacity",
+                    "financing_terms",
+                    "covenants_summary",
+                    "non_recourse_flag",
+                    "surplus_release_conditions",
+                    "expected_economic_profit",
+                    "accounting_to_economic_bridge",
+                    "pledged_or_secured_notes",
+                    "special_project_notes",
+                ),
+            ),
+            "sensitivity_scenario": _serialize_extension_row(
+                sensitivity,
+                (
+                    "sales_price_plus_5_effect",
+                    "sales_price_plus_10_effect",
+                    "sales_price_minus_5_effect",
+                    "sales_price_minus_10_effect",
+                    "construction_cost_plus_5_effect",
+                    "construction_cost_plus_10_effect",
+                    "construction_cost_minus_5_effect",
+                    "construction_cost_minus_10_effect",
+                    "base_gross_profit_not_yet_recognized",
+                ),
+            ),
+            "urban_renewal_detail": _serialize_extension_row(
+                urban_renewal,
+                (
+                    "existing_units",
+                    "future_units_total",
+                    "future_units_marketed_by_company",
+                    "future_units_for_existing_tenants",
+                    "tenant_signature_rate",
+                    "signature_timeline",
+                    "average_exchange_ratio_signed",
+                    "average_exchange_ratio_unsigned",
+                    "tenant_relocation_or_demolition_cost",
+                    "execution_dependencies",
+                    "planning_status_text",
+                    "accounting_treatment_summary",
+                ),
+            ),
+            "land_reserve_detail": _serialize_extension_row(
+                land_reserve,
+                (
+                    "land_area_sqm",
+                    "historical_cost",
+                    "financing_cost",
+                    "planning_cost",
+                    "carrying_value",
+                    "current_planning_status",
+                    "requested_planning_status",
+                    "intended_units",
+                    "intended_uses",
+                ),
+            ),
+        }.items()
+        if value
+    }
+
+
 def _trust_map(rows: list[FieldProvenance], fields: list[str]) -> dict[str, dict[str, str]]:
     lookup: dict[str, FieldProvenance] = {}
     for row in rows:
@@ -133,6 +258,8 @@ def _serialize_project_row(row: dict) -> dict:
         "company": {"id": row["company_id"], "name_he": row["company_name_he"]},
         "city": row["city"],
         "neighborhood": row["neighborhood"],
+        "lifecycle_stage": row.get("lifecycle_stage"),
+        "disclosure_level": row.get("disclosure_level"),
         "project_business_type": row["project_business_type"],
         "government_program_type": row["government_program_type"],
         "project_urban_renewal_type": row["project_urban_renewal_type"],
@@ -264,6 +391,8 @@ async def list_projects(
             ProjectMaster.canonical_name,
             ProjectMaster.city,
             ProjectMaster.neighborhood,
+            ProjectMaster.lifecycle_stage,
+            ProjectMaster.disclosure_level,
             ProjectMaster.project_business_type,
             ProjectMaster.government_program_type,
             ProjectMaster.project_urban_renewal_type,
@@ -316,6 +445,8 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 ProjectMaster.city,
                 ProjectMaster.neighborhood,
                 ProjectMaster.district,
+                ProjectMaster.lifecycle_stage,
+                ProjectMaster.disclosure_level,
                 ProjectMaster.project_business_type,
                 ProjectMaster.government_program_type,
                 ProjectMaster.project_urban_renewal_type,
@@ -333,6 +464,9 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 Company.name_he.label("company_name_he"),
                 latest_snapshot.c.snapshot_id,
                 latest_snapshot.c.snapshot_date,
+                latest_snapshot.c.lifecycle_stage.label("snapshot_lifecycle_stage"),
+                latest_snapshot.c.disclosure_level.label("snapshot_disclosure_level"),
+                latest_snapshot.c.source_section_kind.label("snapshot_source_section_kind"),
                 latest_snapshot.c.project_status,
                 latest_snapshot.c.permit_status,
                 latest_snapshot.c.total_units,
@@ -388,6 +522,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
     missing_fields = sorted({row.field_name for row in provenance if row.value_origin_type == "unknown"})
 
     display_geometry = _resolved_display_geometry_from_row(detail)
+    extension_blocks = await _snapshot_extension_blocks(session, detail["project_id"], detail["snapshot_id"])
 
     return {
         "identity": {
@@ -396,6 +531,8 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
             "company": {"id": detail["company_id"], "name_he": detail["company_name_he"]},
         },
         "classification": {
+            "lifecycle_stage": detail["lifecycle_stage"],
+            "disclosure_level": detail["disclosure_level"],
             "project_business_type": detail["project_business_type"],
             "government_program_type": detail["government_program_type"],
             "project_urban_renewal_type": detail["project_urban_renewal_type"],
@@ -426,6 +563,9 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
         "latest_snapshot": {
             "snapshot_id": detail["snapshot_id"],
             "snapshot_date": detail["snapshot_date"],
+            "lifecycle_stage": detail["lifecycle_stage"] or detail["snapshot_lifecycle_stage"],
+            "disclosure_level": detail["snapshot_disclosure_level"] or detail["disclosure_level"],
+            "source_section_kind": detail["snapshot_source_section_kind"],
             "project_status": detail["project_status"],
             "permit_status": detail["permit_status"],
             "total_units": detail["total_units"],
@@ -447,6 +587,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                     "gross_margin_expected_pct",
                 ],
             ),
+            "extension_blocks": extension_blocks,
         },
         "derived_metrics": {
             "sell_through_rate": _safe_rate(detail["sold_units_cumulative"], detail["marketed_units"]),
@@ -815,6 +956,8 @@ async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -
             ProjectMaster.canonical_name,
             ProjectMaster.city,
             ProjectMaster.neighborhood,
+            ProjectMaster.lifecycle_stage,
+            ProjectMaster.disclosure_level,
             ProjectMaster.project_business_type,
             ProjectMaster.government_program_type,
             ProjectMaster.project_urban_renewal_type,
@@ -896,6 +1039,8 @@ async def get_map_projects(session: AsyncSession, filters: ProjectListFilters) -
                     "company_name": item["company"]["name_he"],
                     "city": item["city"],
                     "neighborhood": row["neighborhood"],
+                    "lifecycle_stage": item["lifecycle_stage"],
+                    "disclosure_level": item["disclosure_level"],
                     "project_business_type": item["project_business_type"],
                     "government_program_type": row["government_program_type"],
                     "project_urban_renewal_type": row["project_urban_renewal_type"],

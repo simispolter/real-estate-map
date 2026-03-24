@@ -31,3 +31,15 @@ def test_extract_metric_and_status_from_window_text():
     assert origin == "reported"
     assert status_value in {"marketing", "construction"}
     assert status_origin == "inferred"
+
+
+def test_extract_project_labels_from_section_lines():
+    labels = parser_pipeline._extract_project_labels(
+        """
+        Project Givati - Givatayim | 220 units | marketing
+        Ben Gurion, Ramla | Phase A | 270 units
+        Table of contents
+        """
+    )
+
+    assert "Givati - Givatayim" in labels

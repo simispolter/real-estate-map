@@ -283,3 +283,70 @@ def test_admin_report_parser_runs_route(monkeypatch):
     payload = response.json()
     assert payload["items"][0]["parser_version"] == "rule_parser_v1"
     assert payload["items"][0]["sections_found"] == 7
+
+
+def test_admin_report_qa_route(monkeypatch):
+    async def fake_get_admin_report_qa(_session, _report_id):
+        return {
+            "report_id": REPORT_ID,
+            "summary": {
+                "total_candidates": 4,
+                "projects_detected": 4,
+                "matched_existing_projects": 2,
+                "new_projects_needed": 1,
+                "ambiguous_candidates": 1,
+                "rejected_or_ignored_candidates": 0,
+                "published_candidates": 0,
+                "missing_key_field_total": 6,
+                "latest_parser_sections_found": 8,
+                "latest_parser_candidate_count": 4,
+            },
+            "lifecycle_stage_distribution": [{"key": "under_construction", "count": 2}],
+            "disclosure_level_distribution": [{"key": "operational_full", "count": 2}],
+            "family_coverage": [
+                {
+                    "section_kind": "construction",
+                    "section_count": 2,
+                    "candidate_count": 2,
+                    "matched_existing_count": 2,
+                    "new_project_count": 0,
+                    "ambiguous_count": 0,
+                    "ignored_count": 0,
+                }
+            ],
+            "missing_key_fields": [{"field_name": "gross_profit_total_expected", "missing_count": 2}],
+            "latest_parser_run": {
+                "id": PARSER_RUN_ID,
+                "report_id": REPORT_ID,
+                "staging_report_id": STAGING_REPORT_ID,
+                "status": "succeeded",
+                "parser_version": "rule_parser_v1",
+                "source_label": "Official PDF",
+                "source_reference": "C:/pilot/report.pdf",
+                "source_checksum": "abc123",
+                "sections_found": 8,
+                "candidate_count": 4,
+                "field_candidate_count": 12,
+                "address_candidate_count": 0,
+                "warnings": [],
+                "errors": [],
+                "diagnostics": {"section_kind_counts": {"construction": 2}},
+                "started_at": "2026-03-22T10:00:00Z",
+                "finished_at": "2026-03-22T10:01:00Z",
+                "created_at": "2026-03-22T10:00:00Z",
+                "updated_at": "2026-03-22T10:01:00Z",
+            },
+        }
+
+    monkeypatch.setattr(admin_ingestion_endpoints, "get_admin_report_qa", fake_get_admin_report_qa)
+    app.dependency_overrides[get_db_session] = _override_db
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/v1/admin/reports/{REPORT_ID}/qa")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["total_candidates"] == 4
+    assert payload["family_coverage"][0]["section_kind"] == "construction"

@@ -14,6 +14,7 @@ from app.schemas.ingestion import (
     AdminReportCandidatesResponse,
     AdminReportCreateRequest,
     AdminReportDetailResponse,
+    AdminReportQaResponse,
     AdminReportsListResponse,
     AdminReportUpdateRequest,
 )
@@ -21,6 +22,7 @@ from app.services.ingestion import (
     create_admin_report,
     create_candidate,
     get_admin_report_detail,
+    get_admin_report_qa,
     get_candidate_detail,
     list_admin_reports,
     list_report_candidates,
@@ -58,6 +60,17 @@ async def get_admin_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
     return AdminReportDetailResponse.model_validate(report)
+
+
+@router.get("/reports/{report_id}/qa", response_model=AdminReportQaResponse)
+async def get_admin_report_qa_view(
+    report_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminReportQaResponse:
+    report_qa = await get_admin_report_qa(session, report_id)
+    if report_qa is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return AdminReportQaResponse.model_validate(report_qa)
 
 
 @router.patch("/reports/{report_id}", response_model=AdminReportDetailResponse)

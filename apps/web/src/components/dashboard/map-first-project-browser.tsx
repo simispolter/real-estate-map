@@ -11,7 +11,9 @@ import { Tag } from "@/components/ui/tag";
 import {
   formatCurrency,
   formatDate,
+  formatDisclosureLevelLabel,
   formatEnumLabel,
+  formatLifecycleStageLabel,
   formatLocationQuality,
   formatNumber,
   formatOriginBadgeLabel,
@@ -484,6 +486,12 @@ export function MapFirstProjectBrowser({
                   {selectedFeature.properties.neighborhood ? ` | ${selectedFeature.properties.neighborhood}` : ""}
                 </p>
                 <div className="tag-row">
+                  {selectedFeature.properties.lifecycleStage ? (
+                    <Tag>{formatLifecycleStageLabel(selectedFeature.properties.lifecycleStage)}</Tag>
+                  ) : null}
+                  {selectedFeature.properties.disclosureLevel ? (
+                    <Tag tone="accent">{formatDisclosureLevelLabel(selectedFeature.properties.disclosureLevel)}</Tag>
+                  ) : null}
                   <Tag>{formatEnumLabel(selectedFeature.properties.projectBusinessType)}</Tag>
                   <Tag>{selectedFeature.properties.projectStatus ? formatEnumLabel(selectedFeature.properties.projectStatus) : "Status n/a"}</Tag>
                   <Tag tone={qualityTone(selectedFeature.properties.locationQuality)}>
@@ -579,6 +587,8 @@ export function MapFirstProjectBrowser({
                     </div>
 
                     <div className="tag-row">
+                      {feature.properties.lifecycleStage ? <Tag>{formatLifecycleStageLabel(feature.properties.lifecycleStage)}</Tag> : null}
+                      {feature.properties.disclosureLevel ? <Tag tone="accent">{formatDisclosureLevelLabel(feature.properties.disclosureLevel)}</Tag> : null}
                       <Tag>{formatEnumLabel(feature.properties.projectBusinessType)}</Tag>
                       {feature.properties.permitStatus ? <Tag>{formatEnumLabel(feature.properties.permitStatus)}</Tag> : null}
                       {originTags(feature).map((origin) => (

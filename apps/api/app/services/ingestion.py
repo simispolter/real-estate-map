@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,16 +13,23 @@ from app.models import (
     AdminAuditLog,
     Company,
     FieldProvenance,
+    ParserRunLog,
     ProjectAddress,
+    ProjectLandReserveDetail,
     ProjectMaster,
+    ProjectMaterialDisclosure,
     ProjectSnapshot,
+    ProjectSensitivityScenario,
+    ProjectUrbanRenewalDetail,
     Report,
     ReviewQueueItem,
     StagingAddressCandidate,
     StagingFieldCandidate,
     StagingProjectCandidate,
     StagingReport,
+    StagingSection,
 )
+from app.services.extraction_profiles import FAMILY_FIELD_GROUPS
 from app.services.identity_ops import get_persisted_candidate_match_suggestions, refresh_candidate_match_suggestions
 from app.services.admin_review import _get_placeholder_admin
 
@@ -36,6 +45,102 @@ DIFF_FIELDS = (
     "permit_status",
     "project_status",
 )
+
+PROJECT_EXTENSION_KEYS = (
+    "material_disclosure",
+    "sensitivity_scenario",
+    "urban_renewal_detail",
+    "land_reserve_detail",
+)
+PILOT_SECTION_KINDS = (
+    "construction",
+    "planning",
+    "completed",
+    "land_reserve",
+    "urban_renewal",
+    "material_project",
+)
+PILOT_KEY_FIELDS = (
+    "city",
+    "candidate_lifecycle_stage",
+    "candidate_disclosure_level",
+    "project_status",
+    "permit_status",
+    "total_units",
+    "marketed_units",
+    "sold_units_cumulative",
+    "unsold_units",
+    "avg_price_per_sqm_cumulative",
+    "gross_profit_total_expected",
+    "gross_margin_expected_pct",
+)
+
+EXTENSION_MODEL_MAP = {
+    "material_disclosure": ProjectMaterialDisclosure,
+    "sensitivity_scenario": ProjectSensitivityScenario,
+    "urban_renewal_detail": ProjectUrbanRenewalDetail,
+    "land_reserve_detail": ProjectLandReserveDetail,
+}
+
+EXTENSION_ENTITY_TYPE_MAP = {
+    "material_disclosure": "material_disclosure",
+    "sensitivity_scenario": "sensitivity_scenario",
+    "urban_renewal_detail": "urban_renewal_detail",
+    "land_reserve_detail": "land_reserve_detail",
+}
+
+EXTENSION_COLUMN_MAP = {
+    "material_disclosure": {
+        "material.financing_institution": "financing_institution",
+        "material.facility_amount": "facility_amount",
+        "material.utilization_amount": "utilization_amount",
+        "material.unused_capacity": "unused_capacity",
+        "material.financing_terms": "financing_terms",
+        "material.covenants_summary": "covenants_summary",
+        "material.non_recourse_flag": "non_recourse_flag",
+        "material.surplus_release_conditions": "surplus_release_conditions",
+        "material.expected_economic_profit": "expected_economic_profit",
+        "material.accounting_to_economic_bridge": "accounting_to_economic_bridge",
+        "material.pledged_or_secured_notes": "pledged_or_secured_notes",
+        "material.special_project_notes": "special_project_notes",
+    },
+    "sensitivity_scenario": {
+        "sensitivity.sales_price_plus_5_effect": "sales_price_plus_5_effect",
+        "sensitivity.sales_price_plus_10_effect": "sales_price_plus_10_effect",
+        "sensitivity.sales_price_minus_5_effect": "sales_price_minus_5_effect",
+        "sensitivity.sales_price_minus_10_effect": "sales_price_minus_10_effect",
+        "sensitivity.construction_cost_plus_5_effect": "construction_cost_plus_5_effect",
+        "sensitivity.construction_cost_plus_10_effect": "construction_cost_plus_10_effect",
+        "sensitivity.construction_cost_minus_5_effect": "construction_cost_minus_5_effect",
+        "sensitivity.construction_cost_minus_10_effect": "construction_cost_minus_10_effect",
+        "sensitivity.base_gross_profit_not_yet_recognized": "base_gross_profit_not_yet_recognized",
+    },
+    "urban_renewal_detail": {
+        "urban_renewal.existing_units": "existing_units",
+        "urban_renewal.future_units_total": "future_units_total",
+        "urban_renewal.future_units_marketed_by_company": "future_units_marketed_by_company",
+        "urban_renewal.future_units_for_existing_tenants": "future_units_for_existing_tenants",
+        "urban_renewal.tenant_signature_rate": "tenant_signature_rate",
+        "urban_renewal.signature_timeline": "signature_timeline",
+        "urban_renewal.average_exchange_ratio_signed": "average_exchange_ratio_signed",
+        "urban_renewal.average_exchange_ratio_unsigned": "average_exchange_ratio_unsigned",
+        "urban_renewal.tenant_relocation_or_demolition_cost": "tenant_relocation_or_demolition_cost",
+        "urban_renewal.execution_dependencies": "execution_dependencies",
+        "urban_renewal.planning_status_text": "planning_status_text",
+        "urban_renewal.accounting_treatment_summary": "accounting_treatment_summary",
+    },
+    "land_reserve_detail": {
+        "land_reserve.land_area_sqm": "land_area_sqm",
+        "land_reserve.historical_cost": "historical_cost",
+        "land_reserve.financing_cost": "financing_cost",
+        "land_reserve.planning_cost": "planning_cost",
+        "land_reserve.carrying_value": "carrying_value",
+        "land_reserve.current_planning_status": "current_planning_status",
+        "land_reserve.requested_planning_status": "requested_planning_status",
+        "land_reserve.intended_units": "intended_units",
+        "land_reserve.intended_uses": "intended_uses",
+    },
+}
 
 
 def _confidence_score(level: str) -> Decimal:
@@ -56,6 +161,77 @@ def _sanitize_candidate_values(payload: dict) -> dict:
     return values
 
 
+def _parse_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    lowered = value.strip().lower()
+    if lowered in {"true", "1", "yes"}:
+        return True
+    if lowered in {"false", "0", "no"}:
+        return False
+    return None
+
+
+def _parse_numeric(value: str | None) -> Decimal | None:
+    if value is None:
+        return None
+    compact = value.replace(",", "").strip()
+    if not compact:
+        return None
+    try:
+        return Decimal(compact)
+    except Exception:
+        return None
+
+
+def _parse_int(value: str | None) -> int | None:
+    numeric = _parse_numeric(value)
+    return int(numeric) if numeric is not None else None
+
+
+def _coerce_extension_value(column_name: str, value: str | None) -> object | None:
+    if value is None:
+        return None
+    int_fields = {
+        "existing_units",
+        "future_units_total",
+        "future_units_marketed_by_company",
+        "future_units_for_existing_tenants",
+        "intended_units",
+    }
+    numeric_fields = {
+        "facility_amount",
+        "utilization_amount",
+        "unused_capacity",
+        "expected_economic_profit",
+        "sales_price_plus_5_effect",
+        "sales_price_plus_10_effect",
+        "sales_price_minus_5_effect",
+        "sales_price_minus_10_effect",
+        "construction_cost_plus_5_effect",
+        "construction_cost_plus_10_effect",
+        "construction_cost_minus_5_effect",
+        "construction_cost_minus_10_effect",
+        "base_gross_profit_not_yet_recognized",
+        "tenant_signature_rate",
+        "average_exchange_ratio_signed",
+        "average_exchange_ratio_unsigned",
+        "tenant_relocation_or_demolition_cost",
+        "land_area_sqm",
+        "historical_cost",
+        "financing_cost",
+        "planning_cost",
+        "carrying_value",
+    }
+    if column_name == "non_recourse_flag":
+        return _parse_bool(value)
+    if column_name in int_fields:
+        return _parse_int(value)
+    if column_name in numeric_fields:
+        return _parse_numeric(value)
+    return value
+
+
 async def _record_audit(
     session: AsyncSession,
     *,
@@ -73,7 +249,7 @@ async def _record_audit(
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            diff_json=diff_json,
+            diff_json=jsonable_encoder(diff_json) if diff_json is not None else None,
             comment=comment,
             created_at=datetime.now(UTC),
         )
@@ -178,6 +354,9 @@ def _serialize_candidate_summary(candidate: StagingProjectCandidate, matched_pro
         "candidate_project_name": candidate.candidate_project_name,
         "city": candidate.city,
         "neighborhood": candidate.neighborhood,
+        "candidate_lifecycle_stage": candidate.candidate_lifecycle_stage,
+        "candidate_disclosure_level": candidate.candidate_disclosure_level,
+        "candidate_section_kind": candidate.candidate_section_kind,
         "matching_status": candidate.matching_status,
         "publish_status": candidate.publish_status,
         "confidence_level": candidate.confidence_level,
@@ -324,6 +503,149 @@ async def get_admin_report_detail(session: AsyncSession, report_id: UUID) -> dic
     }
 
 
+async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | None:
+    report = await _get_report(session, report_id)
+    if report is None:
+        return None
+
+    staging_report = await _get_staging_report(session, report)
+    sections = (
+        await session.execute(
+            select(StagingSection)
+            .where(StagingSection.staging_report_id == staging_report.id)
+            .order_by(StagingSection.source_page_from.asc().nullslast(), StagingSection.created_at.asc())
+        )
+    ).scalars().all()
+    candidates = (
+        await session.execute(
+            select(StagingProjectCandidate)
+            .where(StagingProjectCandidate.staging_report_id == staging_report.id)
+            .order_by(StagingProjectCandidate.created_at.asc())
+        )
+    ).scalars().all()
+
+    latest_parser_run = (
+        await session.execute(
+            select(ParserRunLog)
+            .where(ParserRunLog.report_id == report.id)
+            .order_by(ParserRunLog.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    lifecycle_distribution = Counter(candidate.candidate_lifecycle_stage or "unknown" for candidate in candidates)
+    disclosure_distribution = Counter(candidate.candidate_disclosure_level or "unknown" for candidate in candidates)
+    missing_field_counts = Counter(
+        field_name
+        for candidate in candidates
+        for field_name in PILOT_KEY_FIELDS
+        if getattr(candidate, field_name) is None
+    )
+    section_count_by_kind = Counter(section.section_kind or "summary_only" for section in sections)
+    candidates_by_kind = Counter(candidate.candidate_section_kind or "summary_only" for candidate in candidates)
+    matched_by_kind = Counter(
+        candidate.candidate_section_kind or "summary_only"
+        for candidate in candidates
+        if candidate.matching_status == "matched_existing_project"
+    )
+    new_by_kind = Counter(
+        candidate.candidate_section_kind or "summary_only"
+        for candidate in candidates
+        if candidate.matching_status == "new_project_needed"
+    )
+    ambiguous_by_kind = Counter(
+        candidate.candidate_section_kind or "summary_only"
+        for candidate in candidates
+        if candidate.matching_status == "ambiguous_match"
+    )
+    ignored_by_kind = Counter(
+        candidate.candidate_section_kind or "summary_only"
+        for candidate in candidates
+        if candidate.matching_status == "ignored"
+    )
+
+    return {
+        "report_id": report.id,
+        "summary": {
+            "total_candidates": len(candidates),
+            "projects_detected": len(
+                {
+                    candidate.candidate_project_name.strip().lower()
+                    for candidate in candidates
+                    if candidate.candidate_project_name.strip()
+                }
+            ),
+            "matched_existing_projects": sum(
+                1 for candidate in candidates if candidate.matching_status == "matched_existing_project"
+            ),
+            "new_projects_needed": sum(
+                1 for candidate in candidates if candidate.matching_status == "new_project_needed"
+            ),
+            "ambiguous_candidates": sum(
+                1 for candidate in candidates if candidate.matching_status == "ambiguous_match"
+            ),
+            "rejected_or_ignored_candidates": sum(
+                1 for candidate in candidates if candidate.matching_status == "ignored"
+            ),
+            "published_candidates": sum(
+                1 for candidate in candidates if candidate.publish_status == "published"
+            ),
+            "missing_key_field_total": sum(missing_field_counts.values()),
+            "latest_parser_sections_found": latest_parser_run.sections_found if latest_parser_run else 0,
+            "latest_parser_candidate_count": latest_parser_run.candidate_count if latest_parser_run else 0,
+        },
+        "lifecycle_stage_distribution": [
+            {"key": key, "count": count}
+            for key, count in sorted(lifecycle_distribution.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "disclosure_level_distribution": [
+            {"key": key, "count": count}
+            for key, count in sorted(disclosure_distribution.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "family_coverage": [
+            {
+                "section_kind": section_kind,
+                "section_count": section_count_by_kind.get(section_kind, 0),
+                "candidate_count": candidates_by_kind.get(section_kind, 0),
+                "matched_existing_count": matched_by_kind.get(section_kind, 0),
+                "new_project_count": new_by_kind.get(section_kind, 0),
+                "ambiguous_count": ambiguous_by_kind.get(section_kind, 0),
+                "ignored_count": ignored_by_kind.get(section_kind, 0),
+            }
+            for section_kind in PILOT_SECTION_KINDS
+        ],
+        "missing_key_fields": [
+            {"field_name": field_name, "missing_count": count}
+            for field_name, count in sorted(missing_field_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "latest_parser_run": (
+            {
+                "id": latest_parser_run.id,
+                "report_id": latest_parser_run.report_id,
+                "staging_report_id": latest_parser_run.staging_report_id,
+                "status": latest_parser_run.status,
+                "parser_version": latest_parser_run.parser_version,
+                "source_label": latest_parser_run.source_label,
+                "source_reference": latest_parser_run.source_reference,
+                "source_checksum": latest_parser_run.source_checksum,
+                "sections_found": latest_parser_run.sections_found,
+                "candidate_count": latest_parser_run.candidate_count,
+                "field_candidate_count": latest_parser_run.field_candidate_count,
+                "address_candidate_count": latest_parser_run.address_candidate_count,
+                "warnings": list(latest_parser_run.warnings_json or []),
+                "errors": list(latest_parser_run.errors_json or []),
+                "diagnostics": dict(latest_parser_run.diagnostics_json or {}),
+                "started_at": latest_parser_run.started_at,
+                "finished_at": latest_parser_run.finished_at,
+                "created_at": latest_parser_run.created_at,
+                "updated_at": latest_parser_run.updated_at,
+            }
+            if latest_parser_run
+            else None
+        ),
+    }
+
+
 async def update_admin_report(session: AsyncSession, report_id: UUID, payload: dict) -> dict | None:
     report = await _get_report(session, report_id)
     if report is None:
@@ -397,6 +719,9 @@ async def _replace_candidate_children(session: AsyncSession, candidate_id: UUID,
                     normalized_value=item.get("normalized_value"),
                     source_page=item.get("source_page"),
                     source_section=item.get("source_section"),
+                    source_table_name=item.get("source_table_name"),
+                    source_row_label=item.get("source_row_label"),
+                    extraction_profile_key=item.get("extraction_profile_key"),
                     value_origin_type=item.get("value_origin_type", "manual"),
                     confidence_level=item.get("confidence_level", "medium"),
                     review_status=item.get("review_status", "pending"),
@@ -444,6 +769,13 @@ async def create_candidate(session: AsyncSession, report_id: UUID, payload: dict
         candidate_project_name=values["candidate_project_name"],
         city=values.get("city"),
         neighborhood=values.get("neighborhood"),
+        candidate_lifecycle_stage=values.get("candidate_lifecycle_stage"),
+        candidate_disclosure_level=values.get("candidate_disclosure_level"),
+        candidate_section_kind=values.get("candidate_section_kind"),
+        candidate_materiality_flag=values.get("candidate_materiality_flag"),
+        source_table_name=values.get("source_table_name"),
+        source_row_label=values.get("source_row_label"),
+        extraction_profile_key=values.get("extraction_profile_key"),
         project_business_type=values.get("project_business_type"),
         government_program_type=values.get("government_program_type", "none"),
         project_urban_renewal_type=values.get("project_urban_renewal_type", "none"),
@@ -490,6 +822,55 @@ def _candidate_field_lookup(field_candidates: list[StagingFieldCandidate]) -> di
     return lookup
 
 
+def _collect_extension_payloads(field_candidates: list[StagingFieldCandidate]) -> dict[str, dict[str, tuple[object | None, StagingFieldCandidate]]]:
+    payloads: dict[str, dict[str, tuple[object | None, StagingFieldCandidate]]] = {key: {} for key in PROJECT_EXTENSION_KEYS}
+    for field_candidate in field_candidates:
+        for family_key, allowed_fields in FAMILY_FIELD_GROUPS.items():
+            if field_candidate.field_name not in allowed_fields:
+                continue
+            column_name = EXTENSION_COLUMN_MAP[family_key][field_candidate.field_name]
+            payloads[family_key][column_name] = (
+                _coerce_extension_value(column_name, field_candidate.normalized_value or field_candidate.raw_value),
+                field_candidate,
+            )
+    return payloads
+
+
+async def _upsert_project_extension_rows(
+    session: AsyncSession,
+    *,
+    project: ProjectMaster,
+    snapshot: ProjectSnapshot,
+    report_id: UUID,
+    field_candidates: list[StagingFieldCandidate],
+) -> dict[str, dict[str, object | None]]:
+    payloads = _collect_extension_payloads(field_candidates)
+    result: dict[str, dict[str, object | None]] = {}
+    for family_key, values in payloads.items():
+        if not values:
+            continue
+        model = EXTENSION_MODEL_MAP[family_key]
+        row = (
+            await session.execute(
+                select(model).where(model.project_id == project.id, model.snapshot_id == snapshot.id)  # type: ignore[attr-defined]
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = model(id=uuid4(), project_id=project.id, snapshot_id=snapshot.id, report_id=report_id)  # type: ignore[call-arg]
+            session.add(row)
+        for column_name, (value, _) in values.items():
+            setattr(row, column_name, value)
+        result[family_key] = {column_name: value for column_name, (value, _) in values.items()}
+    return result
+
+
+def _serialize_extension_row(row: object | None, family_key: str) -> dict[str, object | None] | None:
+    if row is None:
+        return None
+    columns = EXTENSION_COLUMN_MAP[family_key].values()
+    return {column_name: getattr(row, column_name) for column_name in columns if getattr(row, column_name) is not None}
+
+
 async def _candidate_compare_rows(
     session: AsyncSession,
     candidate: StagingProjectCandidate,
@@ -509,9 +890,12 @@ async def _candidate_compare_rows(
         ("canonical_name", getattr(matched_project, "canonical_name", None), candidate.candidate_project_name),
         ("city", getattr(matched_project, "city", None), candidate.city),
         ("neighborhood", getattr(matched_project, "neighborhood", None), candidate.neighborhood),
+        ("lifecycle_stage", getattr(matched_project, "lifecycle_stage", None), candidate.candidate_lifecycle_stage),
+        ("disclosure_level", getattr(matched_project, "disclosure_level", None), candidate.candidate_disclosure_level),
         ("project_business_type", getattr(matched_project, "project_business_type", None), candidate.project_business_type),
         ("government_program_type", getattr(matched_project, "government_program_type", None), candidate.government_program_type),
         ("project_urban_renewal_type", getattr(matched_project, "project_urban_renewal_type", None), candidate.project_urban_renewal_type),
+        ("source_section_kind", getattr(latest_snapshot, "source_section_kind", None), candidate.candidate_section_kind),
         ("project_status", getattr(latest_snapshot, "project_status", None), candidate.project_status),
         ("permit_status", getattr(latest_snapshot, "permit_status", None), candidate.permit_status),
         ("total_units", getattr(latest_snapshot, "total_units", None), candidate.total_units),
@@ -574,6 +958,7 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
     await refresh_candidate_match_suggestions(session, candidate)
     compare_rows = await _candidate_compare_rows(session, candidate, field_candidates)
     diff_summary = _diff_summary(compare_rows)
+    extension_payloads = _collect_extension_payloads(field_candidates)
     candidate.diff_summary = {item["field_name"]: item["changed"] for item in diff_summary if item["changed"]}
     await session.flush()
     return {
@@ -585,6 +970,13 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
         "candidate_project_name": candidate.candidate_project_name,
         "city": candidate.city,
         "neighborhood": candidate.neighborhood,
+        "candidate_lifecycle_stage": candidate.candidate_lifecycle_stage,
+        "candidate_disclosure_level": candidate.candidate_disclosure_level,
+        "candidate_section_kind": candidate.candidate_section_kind,
+        "candidate_materiality_flag": candidate.candidate_materiality_flag,
+        "source_table_name": candidate.source_table_name,
+        "source_row_label": candidate.source_row_label,
+        "extraction_profile_key": candidate.extraction_profile_key,
         "project_business_type": candidate.project_business_type,
         "government_program_type": candidate.government_program_type,
         "project_urban_renewal_type": candidate.project_urban_renewal_type,
@@ -614,6 +1006,9 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
                 "normalized_value": item.normalized_value,
                 "source_page": item.source_page,
                 "source_section": item.source_section,
+                "source_table_name": item.source_table_name,
+                "source_row_label": item.source_row_label,
+                "extraction_profile_key": item.extraction_profile_key,
                 "value_origin_type": item.value_origin_type,
                 "confidence_level": item.confidence_level,
                 "review_status": item.review_status,
@@ -647,6 +1042,15 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
         "match_suggestions": await get_persisted_candidate_match_suggestions(session, candidate.id),
         "compare_rows": compare_rows,
         "diff_summary": diff_summary,
+        "extension_blocks": {
+            family_key: {
+                column_name: value
+                for column_name, (value, _) in values.items()
+                if value is not None
+            }
+            for family_key, values in extension_payloads.items()
+            if values
+        },
         "created_at": candidate.created_at,
         "updated_at": candidate.updated_at,
     }
@@ -666,6 +1070,13 @@ async def update_candidate(session: AsyncSession, candidate_id: UUID, payload: d
         "candidate_project_name",
         "city",
         "neighborhood",
+        "candidate_lifecycle_stage",
+        "candidate_disclosure_level",
+        "candidate_section_kind",
+        "candidate_materiality_flag",
+        "source_table_name",
+        "source_row_label",
+        "extraction_profile_key",
         "project_business_type",
         "government_program_type",
         "project_urban_renewal_type",
@@ -831,11 +1242,14 @@ async def _write_candidate_provenance(
         "canonical_name": ("project_master", project.id, candidate.candidate_project_name),
         "city": ("project_master", project.id, candidate.city),
         "neighborhood": ("project_master", project.id, candidate.neighborhood),
+        "lifecycle_stage": ("project_master", project.id, candidate.candidate_lifecycle_stage),
+        "disclosure_level": ("project_master", project.id, candidate.candidate_disclosure_level),
         "project_business_type": ("project_master", project.id, candidate.project_business_type),
         "government_program_type": ("project_master", project.id, candidate.government_program_type),
         "project_urban_renewal_type": ("project_master", project.id, candidate.project_urban_renewal_type),
     }
     snapshot_field_map = {
+        "source_section_kind": ("snapshot", snapshot.id, candidate.candidate_section_kind),
         "project_status": ("snapshot", snapshot.id, candidate.project_status),
         "permit_status": ("snapshot", snapshot.id, candidate.permit_status),
         "total_units": ("snapshot", snapshot.id, candidate.total_units),
@@ -873,6 +1287,43 @@ async def _write_candidate_provenance(
                 created_at=datetime.now(UTC),
             )
         )
+
+
+async def _write_extension_provenance(
+    session: AsyncSession,
+    *,
+    extension_rows: dict[str, object],
+    extension_payloads: dict[str, dict[str, tuple[object | None, StagingFieldCandidate]]],
+    report_id: UUID,
+    admin_user_id: UUID,
+    reviewer_note: str | None,
+) -> None:
+    for family_key, row in extension_rows.items():
+        entity_type = EXTENSION_ENTITY_TYPE_MAP[family_key]
+        for column_name, value in extension_payloads.get(family_key, {}).items():
+            normalized_value, field_candidate = value
+            session.add(
+                FieldProvenance(
+                    id=uuid4(),
+                    entity_type=entity_type,
+                    entity_id=row.id,  # type: ignore[attr-defined]
+                    field_name=column_name,
+                    raw_value=field_candidate.raw_value,
+                    normalized_value=None if normalized_value is None else str(normalized_value),
+                    source_report_id=report_id,
+                    source_page=field_candidate.source_page,
+                    source_section=field_candidate.source_section,
+                    extraction_method="admin",
+                    parser_version="manual_bridge_v1",
+                    confidence_score=_confidence_score(field_candidate.confidence_level),
+                    value_origin_type=field_candidate.value_origin_type,
+                    review_status=field_candidate.review_status,
+                    review_note=field_candidate.review_notes or reviewer_note,
+                    reviewed_by=admin_user_id,
+                    reviewed_at=datetime.now(UTC),
+                    created_at=datetime.now(UTC),
+                )
+            )
 
 
 async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_note: str | None) -> dict | None:
@@ -920,6 +1371,8 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
             project_urban_renewal_type=values["project_urban_renewal_type"],
             project_deal_type="ownership",
             project_usage_profile="residential_only",
+            lifecycle_stage=candidate.candidate_lifecycle_stage,
+            disclosure_level=candidate.candidate_disclosure_level,
             is_publicly_visible=False,
             location_confidence=candidate.location_confidence,
             classification_confidence=candidate.confidence_level,
@@ -935,6 +1388,8 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
         project.canonical_name = candidate.candidate_project_name or project.canonical_name
         project.city = candidate.city
         project.neighborhood = candidate.neighborhood
+        project.lifecycle_stage = candidate.candidate_lifecycle_stage or project.lifecycle_stage
+        project.disclosure_level = candidate.candidate_disclosure_level or project.disclosure_level
         if candidate.project_business_type:
             project.project_business_type = values["project_business_type"]
         project.government_program_type = values["government_program_type"]
@@ -960,6 +1415,9 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
 
     snapshot.project_status = candidate.project_status
     snapshot.permit_status = candidate.permit_status
+    snapshot.lifecycle_stage = candidate.candidate_lifecycle_stage or project.lifecycle_stage
+    snapshot.disclosure_level = candidate.candidate_disclosure_level or project.disclosure_level
+    snapshot.source_section_kind = candidate.candidate_section_kind
     snapshot.total_units = candidate.total_units
     snapshot.marketed_units = candidate.marketed_units
     snapshot.sold_units_cumulative = candidate.sold_units_cumulative
@@ -969,6 +1427,25 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
     snapshot.gross_margin_expected_pct = candidate.gross_margin_expected_pct
     snapshot.needs_admin_review = False
     await session.flush()
+    extension_payloads = _collect_extension_payloads(field_candidates)
+    extension_summaries = await _upsert_project_extension_rows(
+        session,
+        project=project,
+        snapshot=snapshot,
+        report_id=report.id,
+        field_candidates=field_candidates,
+    )
+    extension_rows: dict[str, object] = {}
+    for family_key, model in EXTENSION_MODEL_MAP.items():
+        if family_key not in extension_summaries:
+            continue
+        row = (
+            await session.execute(
+                select(model).where(model.project_id == project.id, model.snapshot_id == snapshot.id)  # type: ignore[attr-defined]
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            extension_rows[family_key] = row
 
     for address_candidate in address_candidates:
         await _upsert_project_address_from_candidate(
@@ -989,6 +1466,14 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
         admin_user_id=admin_user.id,
         reviewer_note=reviewer_note,
         field_candidates=field_candidates,
+    )
+    await _write_extension_provenance(
+        session,
+        extension_rows=extension_rows,
+        extension_payloads=extension_payloads,
+        report_id=report.id,
+        admin_user_id=admin_user.id,
+        reviewer_note=reviewer_note,
     )
 
     diff_json = {}
@@ -1038,7 +1523,7 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
         action="staging_candidate_publish",
         entity_type="staging_project_candidate",
         entity_id=candidate.id,
-        diff_json=diff_json,
+        diff_json={**diff_json, "extension_families": extension_summaries},
         comment=reviewer_note,
         actor_user_id=admin_user.id,
     )

@@ -59,6 +59,34 @@ project_usage_profile_enum = pg_enum(
     "residential_commercial",
     "residential_mixed",
 )
+project_lifecycle_stage_enum = pg_enum(
+    "project_lifecycle_stage_enum",
+    "under_construction",
+    "completed_unsold_tail",
+    "completed_delivered",
+    "planning_advanced",
+    "urban_renewal_pipeline",
+    "land_reserve",
+)
+project_disclosure_level_enum = pg_enum(
+    "project_disclosure_level_enum",
+    "material_very_high",
+    "operational_full",
+    "inventory_tail",
+    "pipeline_signature",
+    "land_reserve",
+    "minimal_reference",
+)
+source_section_kind_enum = pg_enum(
+    "source_section_kind_enum",
+    "construction",
+    "planning",
+    "completed",
+    "land_reserve",
+    "urban_renewal",
+    "material_project",
+    "summary_only",
+)
 location_confidence_enum = pg_enum("location_confidence_enum", "exact", "approximate", "city_only", "unknown")
 classification_confidence_enum = pg_enum("classification_confidence_enum", "high", "medium", "low")
 mapping_review_status_enum = pg_enum("mapping_review_status_enum", "pending", "reviewed", "approved", "rejected")
@@ -93,7 +121,17 @@ geocoding_status_enum = pg_enum(
 )
 project_status_enum = pg_enum("project_status_enum", "planning", "permit", "construction", "marketing", "completed", "stalled")
 permit_status_enum = pg_enum("permit_status_enum", "none", "pending", "granted", "partial")
-provenance_entity_type_enum = pg_enum("provenance_entity_type_enum", "project_master", "snapshot", "land_reserve", "address")
+provenance_entity_type_enum = pg_enum(
+    "provenance_entity_type_enum",
+    "project_master",
+    "snapshot",
+    "land_reserve",
+    "address",
+    "material_disclosure",
+    "sensitivity_scenario",
+    "urban_renewal_detail",
+    "land_reserve_detail",
+)
 extraction_method_enum = pg_enum("extraction_method_enum", "table", "text", "rule", "llm", "admin")
 review_status_enum = pg_enum("review_status_enum", "pending", "approved", "corrected", "rejected")
 value_origin_type_enum = pg_enum("value_origin_type_enum", "reported", "inferred", "manual", "imported", "unknown")
@@ -267,6 +305,8 @@ class ProjectMaster(TimestampMixin, Base):
     project_urban_renewal_type: Mapped[str] = mapped_column(project_urban_renewal_type_enum, nullable=False, default="none")
     project_deal_type: Mapped[str] = mapped_column(project_deal_type_enum, nullable=False, default="ownership")
     project_usage_profile: Mapped[str] = mapped_column(project_usage_profile_enum, nullable=False, default="residential_only")
+    lifecycle_stage: Mapped[str | None] = mapped_column(project_lifecycle_stage_enum)
+    disclosure_level: Mapped[str | None] = mapped_column(project_disclosure_level_enum)
     is_publicly_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     location_confidence: Mapped[str] = mapped_column(location_confidence_enum, nullable=False, default="unknown")
     classification_confidence: Mapped[str] = mapped_column(classification_confidence_enum, nullable=False, default="medium")
@@ -291,6 +331,10 @@ class ProjectMaster(TimestampMixin, Base):
     aliases: Mapped[list["ProjectAlias"]] = relationship(back_populates="project")
     addresses: Mapped[list["ProjectAddress"]] = relationship(back_populates="project")
     snapshots: Mapped[list["ProjectSnapshot"]] = relationship(back_populates="project")
+    material_disclosures: Mapped[list["ProjectMaterialDisclosure"]] = relationship(back_populates="project")
+    sensitivity_scenarios: Mapped[list["ProjectSensitivityScenario"]] = relationship(back_populates="project")
+    urban_renewal_details: Mapped[list["ProjectUrbanRenewalDetail"]] = relationship(back_populates="project")
+    land_reserve_details: Mapped[list["ProjectLandReserveDetail"]] = relationship(back_populates="project")
     merged_into_project: Mapped["ProjectMaster | None"] = relationship(remote_side="ProjectMaster.id")
 
 
@@ -375,9 +419,13 @@ class ProjectSnapshot(TimestampMixin, Base):
         nullable=False,
     )
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    lifecycle_stage: Mapped[str | None] = mapped_column(project_lifecycle_stage_enum)
+    disclosure_level: Mapped[str | None] = mapped_column(project_disclosure_level_enum)
+    source_section_kind: Mapped[str | None] = mapped_column(source_section_kind_enum)
     project_status: Mapped[str | None] = mapped_column(project_status_enum)
     permit_status: Mapped[str | None] = mapped_column(permit_status_enum)
     planning_status: Mapped[str | None] = mapped_column(Text)
+    average_unit_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     signature_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     engineering_completion_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     financial_completion_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
@@ -388,14 +436,18 @@ class ProjectSnapshot(TimestampMixin, Base):
     unsold_units: Mapped[int | None] = mapped_column(Integer)
     sold_area_sqm_period: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     sold_area_sqm_cumulative: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    signed_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     unsold_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     avg_price_per_sqm_period: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     avg_price_per_sqm_cumulative: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    recognized_revenue: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     recognized_revenue_to_date: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     expected_revenue_total: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     expected_revenue_signed_contracts: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     expected_revenue_unsold_inventory: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    expected_cost_total: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     gross_profit_total_expected: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    recognized_gross_profit: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     gross_profit_recognized: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     gross_profit_unrecognized: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     gross_margin_expected_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
@@ -406,6 +458,10 @@ class ProjectSnapshot(TimestampMixin, Base):
     other_project_costs: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     advances_received: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     receivables_from_signed_contracts: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    planned_construction_start_date: Mapped[date | None] = mapped_column(Date)
+    planned_construction_end_date: Mapped[date | None] = mapped_column(Date)
+    planned_marketing_start_date: Mapped[date | None] = mapped_column(Date)
+    planned_marketing_end_date: Mapped[date | None] = mapped_column(Date)
     estimated_start_date: Mapped[date | None] = mapped_column(Date)
     estimated_completion_date: Mapped[date | None] = mapped_column(Date)
     needs_admin_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -415,6 +471,140 @@ class ProjectSnapshot(TimestampMixin, Base):
 
     project: Mapped["ProjectMaster"] = relationship(back_populates="snapshots")
     report: Mapped["Report"] = relationship(back_populates="project_snapshots")
+    material_disclosures: Mapped[list["ProjectMaterialDisclosure"]] = relationship(back_populates="snapshot")
+    sensitivity_scenarios: Mapped[list["ProjectSensitivityScenario"]] = relationship(back_populates="snapshot")
+    urban_renewal_details: Mapped[list["ProjectUrbanRenewalDetail"]] = relationship(back_populates="snapshot")
+    land_reserve_details: Mapped[list["ProjectLandReserveDetail"]] = relationship(back_populates="snapshot")
+
+
+class ProjectMaterialDisclosure(TimestampMixin, Base):
+    __tablename__ = "project_material_disclosures"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    financing_institution: Mapped[str | None] = mapped_column(Text)
+    facility_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    utilization_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    unused_capacity: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    financing_terms: Mapped[str | None] = mapped_column(Text)
+    covenants_summary: Mapped[str | None] = mapped_column(Text)
+    non_recourse_flag: Mapped[bool | None] = mapped_column(Boolean)
+    surplus_release_conditions: Mapped[str | None] = mapped_column(Text)
+    expected_economic_profit: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    accounting_to_economic_bridge: Mapped[str | None] = mapped_column(Text)
+    pledged_or_secured_notes: Mapped[str | None] = mapped_column(Text)
+    special_project_notes: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="material_disclosures")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="material_disclosures")
+
+
+class ProjectSensitivityScenario(TimestampMixin, Base):
+    __tablename__ = "project_sensitivity_scenarios"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    sales_price_plus_5_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    sales_price_plus_10_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    sales_price_minus_5_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    sales_price_minus_10_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    construction_cost_plus_5_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    construction_cost_plus_10_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    construction_cost_minus_5_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    construction_cost_minus_10_effect: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    base_gross_profit_not_yet_recognized: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="sensitivity_scenarios")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="sensitivity_scenarios")
+
+
+class ProjectUrbanRenewalDetail(TimestampMixin, Base):
+    __tablename__ = "project_urban_renewal_details"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    existing_units: Mapped[int | None] = mapped_column(Integer)
+    future_units_total: Mapped[int | None] = mapped_column(Integer)
+    future_units_marketed_by_company: Mapped[int | None] = mapped_column(Integer)
+    future_units_for_existing_tenants: Mapped[int | None] = mapped_column(Integer)
+    tenant_signature_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    signature_timeline: Mapped[str | None] = mapped_column(Text)
+    average_exchange_ratio_signed: Mapped[Decimal | None] = mapped_column(Numeric(8, 3))
+    average_exchange_ratio_unsigned: Mapped[Decimal | None] = mapped_column(Numeric(8, 3))
+    tenant_relocation_or_demolition_cost: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    execution_dependencies: Mapped[str | None] = mapped_column(Text)
+    planning_status_text: Mapped[str | None] = mapped_column(Text)
+    accounting_treatment_summary: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="urban_renewal_details")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="urban_renewal_details")
+
+
+class ProjectLandReserveDetail(TimestampMixin, Base):
+    __tablename__ = "project_land_reserve_details"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    land_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    historical_cost: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    financing_cost: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    planning_cost: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    carrying_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    current_planning_status: Mapped[str | None] = mapped_column(Text)
+    requested_planning_status: Mapped[str | None] = mapped_column(Text)
+    intended_units: Mapped[int | None] = mapped_column(Integer)
+    intended_uses: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="land_reserve_details")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="land_reserve_details")
 
 
 class FieldProvenance(Base):
@@ -499,7 +689,9 @@ class StagingSection(TimestampMixin, Base):
         ForeignKey("parser_run_logs.id", ondelete="SET NULL"),
     )
     section_name: Mapped[str] = mapped_column(Text, nullable=False)
+    section_kind: Mapped[str | None] = mapped_column(source_section_kind_enum)
     raw_label: Mapped[str | None] = mapped_column(Text)
+    extraction_profile_key: Mapped[str | None] = mapped_column(Text)
     source_page_from: Mapped[int | None] = mapped_column(Integer)
     source_page_to: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -538,6 +730,13 @@ class StagingProjectCandidate(TimestampMixin, Base):
     candidate_project_name: Mapped[str] = mapped_column(Text, nullable=False)
     city: Mapped[str | None] = mapped_column(Text)
     neighborhood: Mapped[str | None] = mapped_column(Text)
+    candidate_lifecycle_stage: Mapped[str | None] = mapped_column(project_lifecycle_stage_enum)
+    candidate_disclosure_level: Mapped[str | None] = mapped_column(project_disclosure_level_enum)
+    candidate_section_kind: Mapped[str | None] = mapped_column(source_section_kind_enum)
+    candidate_materiality_flag: Mapped[bool | None] = mapped_column(Boolean)
+    source_table_name: Mapped[str | None] = mapped_column(Text)
+    source_row_label: Mapped[str | None] = mapped_column(Text)
+    extraction_profile_key: Mapped[str | None] = mapped_column(Text)
     project_business_type: Mapped[str | None] = mapped_column(project_business_type_enum)
     government_program_type: Mapped[str] = mapped_column(government_program_type_enum, nullable=False, default="none")
     project_urban_renewal_type: Mapped[str] = mapped_column(project_urban_renewal_type_enum, nullable=False, default="none")
@@ -584,6 +783,9 @@ class StagingFieldCandidate(TimestampMixin, Base):
     normalized_value: Mapped[str | None] = mapped_column(Text)
     source_page: Mapped[int | None] = mapped_column(Integer)
     source_section: Mapped[str | None] = mapped_column(Text)
+    source_table_name: Mapped[str | None] = mapped_column(Text)
+    source_row_label: Mapped[str | None] = mapped_column(Text)
+    extraction_profile_key: Mapped[str | None] = mapped_column(Text)
     value_origin_type: Mapped[str] = mapped_column(value_origin_type_enum, nullable=False, default="manual")
     confidence_level: Mapped[str] = mapped_column(classification_confidence_enum, nullable=False, default="medium")
     review_status: Mapped[str] = mapped_column(review_status_enum, nullable=False, default="pending")

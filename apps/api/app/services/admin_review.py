@@ -16,9 +16,13 @@ from app.models import (
     ProjectAddress,
     ProjectAlias,
     ProjectDuplicateSuggestion,
+    ProjectLandReserveDetail,
     ProjectMergeLog,
     ProjectMaster,
+    ProjectMaterialDisclosure,
     ProjectSnapshot,
+    ProjectSensitivityScenario,
+    ProjectUrbanRenewalDetail,
     Report,
     StagingProjectCandidate,
     StagingReport,
@@ -59,6 +63,117 @@ SNAPSHOT_DIFF_FIELDS = (
     "permit_status",
     "project_status",
 )
+
+
+def _serialize_extension_row(row: object | None, fields: tuple[str, ...]) -> dict[str, object | None] | None:
+    if row is None:
+        return None
+    payload = {field_name: getattr(row, field_name) for field_name in fields if getattr(row, field_name) is not None}
+    return payload or None
+
+
+async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, snapshot_id: UUID) -> dict[str, dict[str, object | None]]:
+    material = (
+        await session.execute(
+            select(ProjectMaterialDisclosure).where(
+                ProjectMaterialDisclosure.project_id == project_id,
+                ProjectMaterialDisclosure.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    sensitivity = (
+        await session.execute(
+            select(ProjectSensitivityScenario).where(
+                ProjectSensitivityScenario.project_id == project_id,
+                ProjectSensitivityScenario.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    urban_renewal = (
+        await session.execute(
+            select(ProjectUrbanRenewalDetail).where(
+                ProjectUrbanRenewalDetail.project_id == project_id,
+                ProjectUrbanRenewalDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    land_reserve = (
+        await session.execute(
+            select(ProjectLandReserveDetail).where(
+                ProjectLandReserveDetail.project_id == project_id,
+                ProjectLandReserveDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    return {
+        key: value
+        for key, value in {
+            "material_disclosure": _serialize_extension_row(
+                material,
+                (
+                    "financing_institution",
+                    "facility_amount",
+                    "utilization_amount",
+                    "unused_capacity",
+                    "financing_terms",
+                    "covenants_summary",
+                    "non_recourse_flag",
+                    "surplus_release_conditions",
+                    "expected_economic_profit",
+                    "accounting_to_economic_bridge",
+                    "pledged_or_secured_notes",
+                    "special_project_notes",
+                ),
+            ),
+            "sensitivity_scenario": _serialize_extension_row(
+                sensitivity,
+                (
+                    "sales_price_plus_5_effect",
+                    "sales_price_plus_10_effect",
+                    "sales_price_minus_5_effect",
+                    "sales_price_minus_10_effect",
+                    "construction_cost_plus_5_effect",
+                    "construction_cost_plus_10_effect",
+                    "construction_cost_minus_5_effect",
+                    "construction_cost_minus_10_effect",
+                    "base_gross_profit_not_yet_recognized",
+                ),
+            ),
+            "urban_renewal_detail": _serialize_extension_row(
+                urban_renewal,
+                (
+                    "existing_units",
+                    "future_units_total",
+                    "future_units_marketed_by_company",
+                    "future_units_for_existing_tenants",
+                    "tenant_signature_rate",
+                    "signature_timeline",
+                    "average_exchange_ratio_signed",
+                    "average_exchange_ratio_unsigned",
+                    "tenant_relocation_or_demolition_cost",
+                    "execution_dependencies",
+                    "planning_status_text",
+                    "accounting_treatment_summary",
+                ),
+            ),
+            "land_reserve_detail": _serialize_extension_row(
+                land_reserve,
+                (
+                    "land_area_sqm",
+                    "historical_cost",
+                    "financing_cost",
+                    "planning_cost",
+                    "carrying_value",
+                    "current_planning_status",
+                    "requested_planning_status",
+                    "intended_units",
+                    "intended_uses",
+                ),
+            ),
+        }.items()
+        if value
+    }
 
 
 async def _get_placeholder_admin(session: AsyncSession) -> AdminUser:
@@ -276,11 +391,15 @@ async def _record_audit(
 
 async def _serialize_snapshot_summary(session: AsyncSession, snapshot: ProjectSnapshot, previous: ProjectSnapshot | None) -> dict:
     report = (await session.execute(select(Report).where(Report.id == snapshot.report_id))).scalar_one_or_none()
+    extension_blocks = await _snapshot_extension_blocks(session, snapshot.project_id, snapshot.id)
     return {
         "id": snapshot.id,
         "report_id": snapshot.report_id,
         "report_name": report.filing_reference if report else None,
         "snapshot_date": snapshot.snapshot_date,
+        "lifecycle_stage": snapshot.lifecycle_stage,
+        "disclosure_level": snapshot.disclosure_level,
+        "source_section_kind": snapshot.source_section_kind,
         "project_status": snapshot.project_status,
         "permit_status": snapshot.permit_status,
         "total_units": snapshot.total_units,
@@ -294,6 +413,7 @@ async def _serialize_snapshot_summary(session: AsyncSession, snapshot: ProjectSn
         "chronology_notes": snapshot.chronology_notes,
         "notes_internal": snapshot.notes_internal,
         "diff_summary": _snapshot_diff(snapshot, previous),
+        "extension_blocks": extension_blocks,
     }
 
 
@@ -309,7 +429,17 @@ async def _project_related_provenance(
             select(FieldProvenance)
             .where(
                 FieldProvenance.entity_id.in_(entity_ids),
-                FieldProvenance.entity_type.in_(["project_master", "snapshot", "address"]),
+                FieldProvenance.entity_type.in_(
+                    [
+                        "project_master",
+                        "snapshot",
+                        "address",
+                        "material_disclosure",
+                        "sensitivity_scenario",
+                        "urban_renewal_detail",
+                        "land_reserve_detail",
+                    ]
+                ),
             )
             .order_by(FieldProvenance.created_at.desc())
         )
@@ -372,9 +502,13 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
 
     latest_snapshot_payload = None
     if latest_snapshot is not None:
+        extension_blocks = await _snapshot_extension_blocks(session, project.id, latest_snapshot.id)
         latest_snapshot_payload = {
             "snapshot_id": latest_snapshot.id,
             "snapshot_date": latest_snapshot.snapshot_date,
+            "lifecycle_stage": latest_snapshot.lifecycle_stage or project.lifecycle_stage,
+            "disclosure_level": latest_snapshot.disclosure_level or project.disclosure_level,
+            "source_section_kind": latest_snapshot.source_section_kind,
             "project_status": latest_snapshot.project_status,
             "permit_status": latest_snapshot.permit_status,
             "total_units": latest_snapshot.total_units,
@@ -398,6 +532,7 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
                     "gross_margin_expected_pct",
                 ],
             ),
+            "extension_blocks": extension_blocks,
         }
 
     classification_rows = [row for row in provenance if row.entity_id in ([project.id] + ([latest_snapshot.id] if latest_snapshot else []))]
@@ -408,6 +543,8 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
         "canonical_name": project.canonical_name,
         "company": {"id": company.id, "name_he": company.name_he},
         "classification": {
+            "lifecycle_stage": project.lifecycle_stage,
+            "disclosure_level": project.disclosure_level,
             "project_business_type": project.project_business_type,
             "government_program_type": project.government_program_type,
             "project_urban_renewal_type": project.project_urban_renewal_type,
@@ -580,6 +717,8 @@ async def list_admin_projects(session: AsyncSession, filters: dict | None = None
             "canonical_name": project.canonical_name,
             "company": {"id": project.company_id, "name_he": company.name_he},
             "city": project.city,
+            "lifecycle_stage": project.lifecycle_stage,
+            "disclosure_level": project.disclosure_level,
             "project_business_type": project.project_business_type,
             "government_program_type": project.government_program_type,
             "project_urban_renewal_type": project.project_urban_renewal_type,
@@ -671,6 +810,8 @@ async def create_admin_project(session: AsyncSession, payload: dict) -> dict:
         project_urban_renewal_type=payload.get("project_urban_renewal_type", "none"),
         project_deal_type="ownership",
         project_usage_profile="residential_only",
+        lifecycle_stage=payload.get("lifecycle_stage"),
+        disclosure_level=payload.get("disclosure_level"),
         is_publicly_visible=payload.get("is_publicly_visible", False),
         location_confidence=payload.get("location_confidence", "city_only"),
         classification_confidence="medium",
@@ -693,6 +834,8 @@ async def create_admin_project(session: AsyncSession, payload: dict) -> dict:
         "canonical_name",
         "city",
         "neighborhood",
+        "lifecycle_stage",
+        "disclosure_level",
         "project_business_type",
         "government_program_type",
         "project_urban_renewal_type",
@@ -745,6 +888,8 @@ async def update_admin_project(session: AsyncSession, project_id: UUID, payload:
     for field_name in [
         "canonical_name",
         "company_id",
+        "lifecycle_stage",
+        "disclosure_level",
         "project_business_type",
         "government_program_type",
         "project_urban_renewal_type",
@@ -1074,6 +1219,9 @@ async def create_project_snapshot(session: AsyncSession, project_id: UUID, paylo
         project_id=project_id,
         report_id=report.id,
         snapshot_date=payload["snapshot_date"],
+        lifecycle_stage=payload.get("lifecycle_stage") or project.lifecycle_stage,
+        disclosure_level=payload.get("disclosure_level") or project.disclosure_level,
+        source_section_kind=payload.get("source_section_kind"),
         total_units=payload.get("total_units"),
         marketed_units=payload.get("marketed_units"),
         sold_units_cumulative=payload.get("sold_units_cumulative"),
@@ -1091,7 +1239,7 @@ async def create_project_snapshot(session: AsyncSession, project_id: UUID, paylo
     session.add(snapshot)
     await session.flush()
 
-    for field_name in SNAPSHOT_DIFF_FIELDS:
+    for field_name in [*SNAPSHOT_DIFF_FIELDS, "lifecycle_stage", "disclosure_level", "source_section_kind"]:
         value = getattr(snapshot, field_name, None)
         if value is not None:
             await _write_provenance(
@@ -1162,6 +1310,9 @@ async def update_snapshot(session: AsyncSession, snapshot_id: UUID, payload: dic
     updatable_fields = [
         "snapshot_date",
         "report_id",
+        "lifecycle_stage",
+        "disclosure_level",
+        "source_section_kind",
         "total_units",
         "marketed_units",
         "sold_units_cumulative",

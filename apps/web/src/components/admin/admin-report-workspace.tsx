@@ -6,6 +6,7 @@ import type {
   AdminCandidateSummary,
   AdminFieldCandidate,
   AdminParserRun,
+  AdminReportQa,
   AdminReportDetail,
 } from "@real-estat-map/shared";
 import {
@@ -14,8 +15,11 @@ import {
   LOCATION_CONFIDENCE_LEVELS,
   PERMIT_STATUSES,
   PROJECT_BUSINESS_TYPES,
+  PROJECT_DISCLOSURE_LEVELS,
+  PROJECT_LIFECYCLE_STAGES,
   PROJECT_STATUSES,
   REPORT_INGESTION_STATUSES,
+  SOURCE_SECTION_KINDS,
   STAGING_PUBLISH_STATUSES,
   URBAN_RENEWAL_TYPES,
   VALUE_ORIGIN_TYPES,
@@ -29,13 +33,23 @@ import {
   getAdminCandidateDetail,
   getAdminReportDetail,
   getAdminReportParserRuns,
+  getAdminReportQa,
   matchAdminCandidate,
   publishAdminCandidate,
   runAdminReportExtraction,
   updateAdminCandidate,
   updateAdminReport,
 } from "@/lib/api";
-import { formatAddressLabel, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatAddressLabel,
+  formatCurrency,
+  formatDate,
+  formatDisclosureLevelLabel,
+  formatLifecycleStageLabel,
+  formatNumber,
+  formatPercent,
+  formatSectionKindLabel,
+} from "@/lib/format";
 
 const REPORT_TYPES = ["annual", "q1", "q2", "q3", "prospectus", "presentation"];
 const PERIOD_TYPES = ["annual", "quarterly", "interim"];
@@ -63,6 +77,13 @@ type CandidateCreateState = {
   candidate_project_name: string;
   city: string;
   neighborhood: string;
+  candidate_lifecycle_stage: string;
+  candidate_disclosure_level: string;
+  candidate_section_kind: string;
+  candidate_materiality_flag: boolean;
+  source_table_name: string;
+  source_row_label: string;
+  extraction_profile_key: string;
   project_business_type: string;
   government_program_type: string;
   project_urban_renewal_type: string;
@@ -93,6 +114,9 @@ type FieldDraft = {
   normalized_value: string;
   source_page: string;
   source_section: string;
+  source_table_name: string;
+  source_row_label: string;
+  extraction_profile_key: string;
   value_origin_type: string;
   confidence_level: string;
   review_status: string;
@@ -140,6 +164,13 @@ function emptyCandidateCreateState(): CandidateCreateState {
     candidate_project_name: "",
     city: "",
     neighborhood: "",
+    candidate_lifecycle_stage: "",
+    candidate_disclosure_level: "",
+    candidate_section_kind: "",
+    candidate_materiality_flag: false,
+    source_table_name: "",
+    source_row_label: "",
+    extraction_profile_key: "",
     project_business_type: "regular_dev",
     government_program_type: "none",
     project_urban_renewal_type: "none",
@@ -165,6 +196,13 @@ function buildCandidateForm(candidate: AdminCandidateDetail): CandidateFormState
     candidate_project_name: candidate.candidateProjectName,
     city: candidate.city ?? "",
     neighborhood: candidate.neighborhood ?? "",
+    candidate_lifecycle_stage: candidate.candidateLifecycleStage ?? "",
+    candidate_disclosure_level: candidate.candidateDisclosureLevel ?? "",
+    candidate_section_kind: candidate.candidateSectionKind ?? "",
+    candidate_materiality_flag: candidate.candidateMaterialityFlag ?? false,
+    source_table_name: candidate.sourceTableName ?? "",
+    source_row_label: candidate.sourceRowLabel ?? "",
+    extraction_profile_key: candidate.extractionProfileKey ?? "",
     project_business_type: candidate.projectBusinessType ?? "regular_dev",
     government_program_type: candidate.governmentProgramType,
     project_urban_renewal_type: candidate.projectUrbanRenewalType,
@@ -194,6 +232,9 @@ function buildFieldDraft(item: AdminFieldCandidate): FieldDraft {
     normalized_value: item.normalizedValue ?? "",
     source_page: item.sourcePage?.toString() ?? "",
     source_section: item.sourceSection ?? "",
+    source_table_name: item.sourceTableName ?? "",
+    source_row_label: item.sourceRowLabel ?? "",
+    extraction_profile_key: item.extractionProfileKey ?? "",
     value_origin_type: item.valueOriginType,
     confidence_level: item.confidenceLevel,
     review_status: item.reviewStatus,
@@ -227,6 +268,9 @@ function emptyFieldDraft(): FieldDraft {
     normalized_value: "",
     source_page: "",
     source_section: "",
+    source_table_name: "",
+    source_row_label: "",
+    extraction_profile_key: "",
     value_origin_type: "manual",
     confidence_level: "medium",
     review_status: "pending",
@@ -278,6 +322,13 @@ function buildCandidatePayload(form: CandidateCreateState | CandidateFormState, 
     candidate_project_name: normalized.candidate_project_name,
     city: normalized.city || null,
     neighborhood: normalized.neighborhood || null,
+    candidate_lifecycle_stage: normalized.candidate_lifecycle_stage || null,
+    candidate_disclosure_level: normalized.candidate_disclosure_level || null,
+    candidate_section_kind: normalized.candidate_section_kind || null,
+    candidate_materiality_flag: normalized.candidate_materiality_flag,
+    source_table_name: normalized.source_table_name || null,
+    source_row_label: normalized.source_row_label || null,
+    extraction_profile_key: normalized.extraction_profile_key || null,
     project_business_type: normalized.project_business_type || null,
     government_program_type: normalized.government_program_type,
     project_urban_renewal_type: normalized.project_urban_renewal_type,
@@ -305,6 +356,9 @@ function buildCandidatePayload(form: CandidateCreateState | CandidateFormState, 
         normalized_value: item.normalized_value || null,
         source_page: toNullableNumber(item.source_page),
         source_section: item.source_section || null,
+        source_table_name: item.source_table_name || null,
+        source_row_label: item.source_row_label || null,
+        extraction_profile_key: item.extraction_profile_key || null,
         value_origin_type: item.value_origin_type,
         confidence_level: item.confidence_level,
         review_status: item.review_status,
@@ -380,6 +434,8 @@ function CandidateQueueItem({
       <div className="candidate-queue-meta">
         <span>confidence {item.confidenceLevel}</span>
         <span>review {item.reviewStatus}</span>
+        <span>{item.candidateLifecycleStage ? formatLifecycleStageLabel(item.candidateLifecycleStage) : "Lifecycle n/a"}</span>
+        <span>{item.candidateDisclosureLevel ? formatDisclosureLevelLabel(item.candidateDisclosureLevel) : "Disclosure n/a"}</span>
         <span>{item.matchedProjectName ?? "Unmatched"}</span>
       </div>
       <div className="form-actions">
@@ -418,6 +474,7 @@ export function AdminReportWorkspace({
   const [candidateFeedback, setCandidateFeedback] = useState<string | null>(null);
   const [candidateError, setCandidateError] = useState<string | null>(null);
   const [parserRuns, setParserRuns] = useState<AdminParserRun[]>([]);
+  const [reportQa, setReportQa] = useState<AdminReportQa | null>(null);
   const [parserFeedback, setParserFeedback] = useState<string | null>(null);
   const [isCandidateLoading, setIsCandidateLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -501,6 +558,13 @@ export function AdminReportWorkspace({
     setParserRuns(result.items);
   }
 
+  async function refreshReportQa() {
+    const result = await getAdminReportQa(report.id);
+    if (result.item) {
+      setReportQa(result.item);
+    }
+  }
+
   function syncCandidate(nextCandidate: AdminCandidateDetail) {
     setCandidate(nextCandidate);
     setCandidateForm(buildCandidateForm(nextCandidate));
@@ -529,6 +593,7 @@ export function AdminReportWorkspace({
     if (result.item) {
       syncReport(result.item);
       await refreshParserRuns();
+      await refreshReportQa();
       if (preferredCandidateId) {
         setCandidateQuery(preferredCandidateId);
       } else if (!selectedCandidateId && result.item.candidates[0]?.id) {
@@ -539,6 +604,7 @@ export function AdminReportWorkspace({
 
   useEffect(() => {
     void refreshParserRuns();
+    void refreshReportQa();
   }, [report.id]);
 
   function handleSaveReport() {
@@ -599,6 +665,7 @@ export function AdminReportWorkspace({
       }
       syncReport(result.item);
       await refreshParserRuns();
+      await refreshReportQa();
       setParserFeedback("Automated extraction completed. Review the parser-created candidates before publish.");
     });
   }
@@ -841,6 +908,113 @@ export function AdminReportWorkspace({
             </div>
           )}
         </div>
+
+        <div className="admin-form-card section-stack">
+          <div>
+            <p className="eyebrow">Pilot QA</p>
+            <h3>Report-level extraction review</h3>
+            <p className="panel-copy">
+              Compare the report families that were detected against the candidate set currently waiting in staging.
+            </p>
+          </div>
+
+          {reportQa ? (
+            <>
+              <div className="stats-grid">
+                <div>
+                  <strong>{reportQa.summary.totalCandidates}</strong>
+                  <span>Candidates created</span>
+                </div>
+                <div>
+                  <strong>{reportQa.summary.projectsDetected}</strong>
+                  <span>Projects detected</span>
+                </div>
+                <div>
+                  <strong>{reportQa.summary.matchedExistingProjects}</strong>
+                  <span>Matched existing</span>
+                </div>
+                <div>
+                  <strong>{reportQa.summary.newProjectsNeeded}</strong>
+                  <span>New projects needed</span>
+                </div>
+                <div>
+                  <strong>{reportQa.summary.ambiguousCandidates}</strong>
+                  <span>Ambiguous</span>
+                </div>
+                <div>
+                  <strong>{reportQa.summary.missingKeyFieldTotal}</strong>
+                  <span>Missing key fields</span>
+                </div>
+              </div>
+
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Disclosure family</th>
+                      <th>Sections found</th>
+                      <th>Candidates</th>
+                      <th>Matched existing</th>
+                      <th>New project</th>
+                      <th>Ambiguous</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportQa.familyCoverage.map((item) => (
+                      <tr key={item.sectionKind}>
+                        <td>{formatSectionKindLabel(item.sectionKind)}</td>
+                        <td>{item.sectionCount}</td>
+                        <td>{item.candidateCount}</td>
+                        <td>{item.matchedExistingCount}</td>
+                        <td>{item.newProjectCount}</td>
+                        <td>{item.ambiguousCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="section-stack">
+                <p className="panel-copy">
+                  <strong>Lifecycle:</strong>{" "}
+                  {reportQa.lifecycleStageDistribution.length > 0
+                    ? reportQa.lifecycleStageDistribution
+                        .map((item) => `${formatLifecycleStageLabel(item.key)} (${item.count})`)
+                        .join(" | ")
+                    : "No lifecycle stages detected yet."}
+                </p>
+                <p className="panel-copy">
+                  <strong>Disclosure depth:</strong>{" "}
+                  {reportQa.disclosureLevelDistribution.length > 0
+                    ? reportQa.disclosureLevelDistribution
+                        .map((item) => `${formatDisclosureLevelLabel(item.key)} (${item.count})`)
+                        .join(" | ")
+                    : "No disclosure levels detected yet."}
+                </p>
+              </div>
+
+              {reportQa.missingKeyFields.length > 0 ? (
+                <div className="tag-row">
+                  {reportQa.missingKeyFields.slice(0, 12).map((item) => (
+                    <span className="tag" key={item.fieldName}>
+                      {item.fieldName}: {item.missingCount}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <strong>No key-field gaps detected.</strong>
+                  <p className="panel-copy">The current staging set already covers the pilot fields tracked by this QA summary.</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty-state">
+              <strong>No QA summary yet.</strong>
+              <p className="panel-copy">Run extraction or create report candidates to populate the pilot QA dashboard.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="report-workspace-grid">
@@ -872,6 +1046,48 @@ export function AdminReportWorkspace({
                   value={candidateCreateForm.neighborhood}
                   onChange={(event) => setCandidateCreateForm((current) => ({ ...current, neighborhood: event.target.value }))}
                 />
+              </label>
+              <label className="filter-field">
+                <span>Lifecycle stage</span>
+                <select
+                  value={candidateCreateForm.candidate_lifecycle_stage}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, candidate_lifecycle_stage: event.target.value }))}
+                >
+                  <option value="">Not set</option>
+                  {PROJECT_LIFECYCLE_STAGES.map((value) => (
+                    <option key={value} value={value}>
+                      {formatLifecycleStageLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="filter-field">
+                <span>Disclosure level</span>
+                <select
+                  value={candidateCreateForm.candidate_disclosure_level}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, candidate_disclosure_level: event.target.value }))}
+                >
+                  <option value="">Not set</option>
+                  {PROJECT_DISCLOSURE_LEVELS.map((value) => (
+                    <option key={value} value={value}>
+                      {formatDisclosureLevelLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="filter-field">
+                <span>Section kind</span>
+                <select
+                  value={candidateCreateForm.candidate_section_kind}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, candidate_section_kind: event.target.value }))}
+                >
+                  <option value="">Not set</option>
+                  {SOURCE_SECTION_KINDS.map((value) => (
+                    <option key={value} value={value}>
+                      {formatSectionKindLabel(value)}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="filter-field">
                 <span>Business type</span>
@@ -960,6 +1176,27 @@ export function AdminReportWorkspace({
                 </select>
               </label>
               <label className="filter-field">
+                <span>Extraction profile key</span>
+                <input
+                  value={candidateCreateForm.extraction_profile_key}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, extraction_profile_key: event.target.value }))}
+                />
+              </label>
+              <label className="filter-field">
+                <span>Source table name</span>
+                <input
+                  value={candidateCreateForm.source_table_name}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, source_table_name: event.target.value }))}
+                />
+              </label>
+              <label className="filter-field">
+                <span>Source row label</span>
+                <input
+                  value={candidateCreateForm.source_row_label}
+                  onChange={(event) => setCandidateCreateForm((current) => ({ ...current, source_row_label: event.target.value }))}
+                />
+              </label>
+              <label className="filter-field">
                 <span>Reviewer note</span>
                 <textarea
                   value={candidateCreateForm.review_notes}
@@ -967,6 +1204,15 @@ export function AdminReportWorkspace({
                 />
               </label>
             </div>
+
+            <label className="panel-copy">
+              <input
+                checked={candidateCreateForm.candidate_materiality_flag}
+                type="checkbox"
+                onChange={(event) => setCandidateCreateForm((current) => ({ ...current, candidate_materiality_flag: event.target.checked }))}
+              />{" "}
+              Mark as material-project style disclosure
+            </label>
 
             <div className="form-actions">
               <button
@@ -1050,6 +1296,11 @@ export function AdminReportWorkspace({
                     <span className={tagClassName(candidate.matchingStatus)}>{candidate.matchingStatus}</span>
                     <span className={tagClassName(candidate.publishStatus)}>{candidate.publishStatus}</span>
                     <span className="tag">{candidate.confidenceLevel}</span>
+                    {candidate.candidateLifecycleStage ? <span className="tag">{formatLifecycleStageLabel(candidate.candidateLifecycleStage)}</span> : null}
+                    {candidate.candidateDisclosureLevel ? (
+                      <span className="tag tag-accent">{formatDisclosureLevelLabel(candidate.candidateDisclosureLevel)}</span>
+                    ) : null}
+                    {candidate.candidateSectionKind ? <span className="tag">{formatSectionKindLabel(candidate.candidateSectionKind)}</span> : null}
                   </div>
                 </div>
 
@@ -1071,6 +1322,54 @@ export function AdminReportWorkspace({
                       value={candidateForm.neighborhood}
                       onChange={(event) => setCandidateForm((current) => (current ? { ...current, neighborhood: event.target.value } : current))}
                     />
+                  </label>
+                  <label className="filter-field">
+                    <span>Lifecycle stage</span>
+                    <select
+                      value={candidateForm.candidate_lifecycle_stage}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, candidate_lifecycle_stage: event.target.value } : current))
+                      }
+                    >
+                      <option value="">Not set</option>
+                      {PROJECT_LIFECYCLE_STAGES.map((value) => (
+                        <option key={value} value={value}>
+                          {formatLifecycleStageLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="filter-field">
+                    <span>Disclosure level</span>
+                    <select
+                      value={candidateForm.candidate_disclosure_level}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, candidate_disclosure_level: event.target.value } : current))
+                      }
+                    >
+                      <option value="">Not set</option>
+                      {PROJECT_DISCLOSURE_LEVELS.map((value) => (
+                        <option key={value} value={value}>
+                          {formatDisclosureLevelLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="filter-field">
+                    <span>Section kind</span>
+                    <select
+                      value={candidateForm.candidate_section_kind}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, candidate_section_kind: event.target.value } : current))
+                      }
+                    >
+                      <option value="">Not set</option>
+                      {SOURCE_SECTION_KINDS.map((value) => (
+                        <option key={value} value={value}>
+                          {formatSectionKindLabel(value)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="filter-field">
                     <span>Business type</span>
@@ -1173,6 +1472,33 @@ export function AdminReportWorkspace({
                     </select>
                   </label>
                   <label className="filter-field">
+                    <span>Extraction profile key</span>
+                    <input
+                      value={candidateForm.extraction_profile_key}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, extraction_profile_key: event.target.value } : current))
+                      }
+                    />
+                  </label>
+                  <label className="filter-field">
+                    <span>Source table name</span>
+                    <input
+                      value={candidateForm.source_table_name}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, source_table_name: event.target.value } : current))
+                      }
+                    />
+                  </label>
+                  <label className="filter-field">
+                    <span>Source row label</span>
+                    <input
+                      value={candidateForm.source_row_label}
+                      onChange={(event) =>
+                        setCandidateForm((current) => (current ? { ...current, source_row_label: event.target.value } : current))
+                      }
+                    />
+                  </label>
+                  <label className="filter-field">
                     <span>Review status</span>
                     <select
                       value={candidateForm.review_status}
@@ -1238,6 +1564,17 @@ export function AdminReportWorkspace({
                   </label>
                 </div>
 
+                <label className="panel-copy">
+                  <input
+                    checked={candidateForm.candidate_materiality_flag}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setCandidateForm((current) => (current ? { ...current, candidate_materiality_flag: event.target.checked } : current))
+                    }
+                  />{" "}
+                  Material-project style disclosure
+                </label>
+
                 <div className="form-actions">
                   <button className="primary-button" disabled={isPending} onClick={handleSaveCandidate} type="button">
                     Save staging candidate
@@ -1261,6 +1598,9 @@ export function AdminReportWorkspace({
                           <input placeholder="Normalized value" value={draft.normalized_value} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, normalized_value: event.target.value } : item)))} />
                           <input placeholder="Source page" value={draft.source_page} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, source_page: event.target.value } : item)))} />
                           <input placeholder="Source section" value={draft.source_section} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, source_section: event.target.value } : item)))} />
+                          <input placeholder="Source table" value={draft.source_table_name} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, source_table_name: event.target.value } : item)))} />
+                          <input placeholder="Source row label" value={draft.source_row_label} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, source_row_label: event.target.value } : item)))} />
+                          <input placeholder="Extraction profile key" value={draft.extraction_profile_key} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, extraction_profile_key: event.target.value } : item)))} />
                           <select value={draft.value_origin_type} onChange={(event) => setFieldDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, value_origin_type: event.target.value } : item)))}>
                             {VALUE_ORIGIN_TYPES.map((value) => (
                               <option key={value} value={value}>

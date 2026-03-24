@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import httpx
+from fastapi.encoders import jsonable_encoder
 from pypdf import PdfReader
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,11 @@ from app.models import (
     StagingProjectCandidate,
     StagingReport,
     StagingSection,
+)
+from app.services.extraction_profiles import (
+    classify_section,
+    infer_candidate_disclosure_level,
+    infer_candidate_lifecycle_stage,
 )
 from app.services.identity_ops import normalize_text, refresh_candidate_match_suggestions
 
@@ -50,6 +56,64 @@ SECTION_HINTS = (
     "ביצוע",
     "התחדשות",
     "ייזום",
+)
+PROJECT_LABEL_HINTS = (
+    "יח",
+    'יח"ד',
+    "דירות",
+    "פרויקט",
+    "project",
+)
+PROJECT_LABEL_STOPWORDS = (
+    "תוכן עניינים",
+    "החברה",
+    "הקבוצה",
+    "דוח תקופתי",
+    "דוח שנתי",
+    "פרק ",
+    "חלק ",
+    "שעבודים",
+    "התאמה",
+    "אזהרה",
+    "מידע צופה פני עתיד",
+    "רווח",
+    "הכנסות",
+    "עלויות",
+    "עלות",
+    "שיעור",
+    "אחוז",
+    "מועד",
+    "מלאי",
+    "התחלת",
+    "צפוי",
+    "סך",
+    "תמורה",
+    "תזרים",
+    "ביצוע",
+    "שיווק התחלת",
+    "שם הפרויקט",
+    "מיקום הפרויקט",
+    "הפרויקט בגין",
+    "רווח גולמי",
+    "עודפים",
+    "שעבודים",
+    "חלק התאגיד",
+    "הפרויקט",
+    "הפרויקטים",
+    "לפרויקט",
+    "בפרויקט",
+    "מידע נוסף",
+    "נתונים כלליים",
+    "עתודות קרקע",
+    "פרויקטים",
+    "יח\"ד",
+    "לפרטים נוספים",
+    "ראו סעיף",
+    "מהותי מאוד",
+    "שווק ואוכלס",
+    "בקשר",
+    "ליווי",
+    "כל של",
 )
 STATUS_PATTERNS = {
     "project_status": [
@@ -108,6 +172,111 @@ class AliasCandidate:
     addresses: list[str]
 
 
+def _compact_line(value: str) -> str:
+    return " ".join(value.replace("\u200f", " ").replace("\u200e", " ").split())
+
+
+def _candidate_key(value: str) -> str:
+    return normalize_text(value).strip()
+
+
+def _project_label_from_line(line: str) -> str | None:
+    compact = _compact_line(line).strip(" |-\t")
+    if len(compact) < 4 or len(compact) > 120:
+        return None
+
+    normalized = normalize_text(compact)
+    if any(stopword in normalized for stopword in PROJECT_LABEL_STOPWORDS):
+        return None
+    if re.match(r"^\(?\d+(?:\.\d+)+", compact):
+        return None
+    if sum(character.isdigit() for character in compact) > 8:
+        return None
+    if not any(hint in normalized for hint in PROJECT_LABEL_HINTS):
+        return None
+    if not (
+        re.search(r"(?:^|[\s\-–])(?:פרויקט|project)\s+", compact, flags=re.IGNORECASE)
+        or "|" in compact
+        or re.match(r"^\(?\d+\)", compact)
+    ):
+        return None
+
+    label = compact
+    project_match = re.search(r"(?:^|[\s\-–])(?:פרויקט|project)\s+[\"'״]?([^|()]{3,80})", compact, flags=re.IGNORECASE)
+    if project_match:
+        label = project_match.group(1)
+    elif re.match(r"^\(?\d+\)", compact):
+        enumerated = re.sub(r"^\(?\d+\)\s*", "", compact)
+        enumerated = enumerated.split(":", 1)[0]
+        metric_split = re.split(r"\b\d{1,4}\s*(?:יח|יח\"ד|units?)\b", enumerated, maxsplit=1, flags=re.IGNORECASE)
+        label = metric_split[0]
+    elif "|" in compact:
+        label = compact.split("|", 1)[0]
+    else:
+        metric_split = re.split(r"\b\d{1,4}\s*(?:יח|יח\"ד|units?)\b", compact, maxsplit=1, flags=re.IGNORECASE)
+        label = metric_split[0]
+
+    label = re.sub(r"\s+", " ", label).strip(" ,.|-–")
+    label = re.sub(r"^\(?\d+\)?\s*[-.)]*\s*", "", label).strip(" ,.|-–")
+    label = re.sub(r"^(?:שלב\s+[א-ת0-9'\"-]+\s*)+", "", label).strip(" ,.|-–")
+    if len(label) < 3:
+        return None
+    if label.isdigit():
+        return None
+
+    label_normalized = normalize_text(label)
+    if any(stopword in label_normalized for stopword in PROJECT_LABEL_STOPWORDS):
+        return None
+    word_count = len([word for word in label.split(" ") if word])
+    if word_count < 1 or word_count > 7:
+        return None
+    if sum(character.isdigit() for character in label) > 4:
+        return None
+    if label_normalized in {"פרויקט", "project", "שיווק", "מלאי", "רווח"}:
+        return None
+    return label
+
+
+def _extract_project_labels(section_text: str) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for line in section_text.splitlines():
+        label = _project_label_from_line(line)
+        if not label:
+            continue
+        key = _candidate_key(label)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        labels.append(label)
+    return labels
+
+
+def _best_existing_match(label: str, candidate_sources: list[AliasCandidate]) -> AliasCandidate | None:
+    label_key = _candidate_key(label)
+    if not label_key:
+        return None
+
+    best: tuple[int, AliasCandidate] | None = None
+    for source in candidate_sources:
+        for alias in source.aliases:
+            alias_key = _candidate_key(alias)
+            if not alias_key:
+                continue
+            score = 0
+            if alias_key == label_key:
+                score = 3
+            elif alias_key in label_key or label_key in alias_key:
+                score = 2
+            elif alias_key.replace(" ", "") in label_key.replace(" ", ""):
+                score = 1
+            if score == 0:
+                continue
+            if best is None or score > best[0]:
+                best = (score, source)
+    return best[1] if best else None
+
+
 def _confidence_score(level: str) -> Decimal:
     return {
         "high": Decimal("95.00"),
@@ -147,7 +316,7 @@ async def _record_audit(
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            diff_json=diff_json,
+            diff_json=jsonable_encoder(diff_json) if diff_json is not None else None,
             comment=comment,
             created_at=datetime.now(UTC),
         )
@@ -476,12 +645,15 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
 
         persisted_sections: list[StagingSection] = []
         for section in sections:
+            classification = classify_section(section.section_name, section.raw_label, _excerpt(section.text))
             row = StagingSection(
                 id=uuid4(),
                 staging_report_id=staging_report.id,
                 parser_run_id=parser_run.id,
                 section_name=section.section_name,
+                section_kind=classification.section_kind,
                 raw_label=section.raw_label,
+                extraction_profile_key=classification.extraction_profile_key,
                 source_page_from=section.source_page_from,
                 source_page_to=section.source_page_to,
                 notes=_excerpt(section.text),
@@ -494,6 +666,7 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
         known_cities = await _known_city_lexicon(session)
         candidate_rows: list[StagingProjectCandidate] = []
         field_count = 0
+        seen_candidate_keys: set[str] = set()
 
         for source in candidate_sources:
             section_hit: tuple[StagingSection, str, str] | None = None
@@ -518,10 +691,26 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
             neighborhood, neighborhood_origin = _detect_neighborhood(context, source.neighborhood)
             project_status, project_status_origin = _extract_status(context, "project_status")
             permit_status, permit_status_origin = _extract_status(context, "permit_status")
+            section_kind = section_row.section_kind
+            extraction_profile_key = section_row.extraction_profile_key
+            candidate_lifecycle_stage = infer_candidate_lifecycle_stage(
+                section_kind=section_kind,
+                project_status=project_status,
+                project_business_type=None,
+                permit_status=permit_status,
+            )
 
             metrics: dict[str, tuple[str | None, Decimal | int | None, str]] = {}
             for field_name in METRIC_PATTERNS:
                 metrics[field_name] = _extract_metric(context, field_name)
+            candidate_disclosure_level = infer_candidate_disclosure_level(
+                section_kind=section_kind,
+                extraction_profile_key=extraction_profile_key,
+                total_units=_safe_int(metrics["total_units"][1]),
+                marketed_units=_safe_int(metrics["marketed_units"][1]),
+                sold_units_cumulative=_safe_int(metrics["sold_units_cumulative"][1]),
+                gross_margin_expected_pct=_safe_decimal(metrics["gross_margin_expected_pct"][1]),
+            )
 
             confidence_level = _candidate_confidence(matched_alias, source.project_name)
             candidate = StagingProjectCandidate(
@@ -534,6 +723,13 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
                 candidate_project_name=matched_alias,
                 city=city,
                 neighborhood=neighborhood,
+                candidate_lifecycle_stage=candidate_lifecycle_stage,
+                candidate_disclosure_level=candidate_disclosure_level,
+                candidate_section_kind=section_kind,
+                candidate_materiality_flag=section_kind == "material_project",
+                source_table_name=section_row.raw_label or section_row.section_name,
+                source_row_label=matched_alias,
+                extraction_profile_key=extraction_profile_key,
                 project_business_type=None,
                 government_program_type="none",
                 project_urban_renewal_type="none",
@@ -556,6 +752,7 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
             )
             session.add(candidate)
             candidate_rows.append(candidate)
+            seen_candidate_keys.add(_candidate_key(candidate.candidate_project_name))
             await session.flush()
 
             fields_to_insert: list[tuple[str, str | None, str | None, str, str]] = []
@@ -594,6 +791,9 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
                         normalized_value=normalized_value,
                         source_page=section_row.source_page_from,
                         source_section=section_row.section_name,
+                        source_table_name=section_row.raw_label or section_row.section_name,
+                        source_row_label=matched_alias,
+                        extraction_profile_key=extraction_profile_key,
                         value_origin_type=origin if origin in {"reported", "inferred"} else "unknown",
                         confidence_level=field_confidence,
                         review_status="pending",
@@ -610,6 +810,157 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
                 "open",
                 "Parser-created candidate awaiting review",
             )
+
+        for section_row, section in zip(persisted_sections, sections, strict=False):
+            if section_row.section_kind == "summary_only":
+                continue
+
+            for extracted_label in _extract_project_labels(section.text):
+                label_key = _candidate_key(extracted_label)
+                if not label_key or label_key in seen_candidate_keys:
+                    continue
+
+                matched_source = _best_existing_match(extracted_label, candidate_sources)
+                context = _context_window(section.text, extracted_label)
+                city, city_origin = _detect_city(context, known_cities, matched_source.city if matched_source else None)
+                neighborhood, neighborhood_origin = _detect_neighborhood(
+                    context,
+                    matched_source.neighborhood if matched_source else None,
+                )
+                project_status, project_status_origin = _extract_status(context, "project_status")
+                permit_status, permit_status_origin = _extract_status(context, "permit_status")
+                metrics: dict[str, tuple[str | None, Decimal | int | None, str]] = {}
+                for field_name in METRIC_PATTERNS:
+                    metrics[field_name] = _extract_metric(context, field_name)
+
+                candidate_lifecycle_stage = infer_candidate_lifecycle_stage(
+                    section_kind=section_row.section_kind,
+                    project_status=project_status,
+                    project_business_type=None,
+                    permit_status=permit_status,
+                )
+                candidate_disclosure_level = infer_candidate_disclosure_level(
+                    section_kind=section_row.section_kind,
+                    extraction_profile_key=section_row.extraction_profile_key,
+                    total_units=_safe_int(metrics["total_units"][1]),
+                    marketed_units=_safe_int(metrics["marketed_units"][1]),
+                    sold_units_cumulative=_safe_int(metrics["sold_units_cumulative"][1]),
+                    gross_margin_expected_pct=_safe_decimal(metrics["gross_margin_expected_pct"][1]),
+                )
+                confidence_level = (
+                    _candidate_confidence(extracted_label, matched_source.project_name)
+                    if matched_source
+                    else "medium"
+                )
+                candidate = StagingProjectCandidate(
+                    id=uuid4(),
+                    staging_report_id=staging_report.id,
+                    parser_run_id=parser_run.id,
+                    company_id=report.company_id,
+                    staging_section_id=section_row.id,
+                    matched_project_id=matched_source.project_id if matched_source else None,
+                    candidate_project_name=extracted_label,
+                    city=city,
+                    neighborhood=neighborhood,
+                    candidate_lifecycle_stage=candidate_lifecycle_stage,
+                    candidate_disclosure_level=candidate_disclosure_level,
+                    candidate_section_kind=section_row.section_kind,
+                    candidate_materiality_flag=section_row.section_kind == "material_project",
+                    source_table_name=section_row.raw_label or section_row.section_name,
+                    source_row_label=extracted_label,
+                    extraction_profile_key=section_row.extraction_profile_key,
+                    project_business_type=None,
+                    government_program_type="none",
+                    project_urban_renewal_type="none",
+                    project_status=project_status,
+                    permit_status=permit_status,
+                    total_units=_safe_int(metrics["total_units"][1]),
+                    marketed_units=_safe_int(metrics["marketed_units"][1]),
+                    sold_units_cumulative=_safe_int(metrics["sold_units_cumulative"][1]),
+                    unsold_units=_safe_int(metrics["unsold_units"][1]),
+                    avg_price_per_sqm_cumulative=_safe_decimal(metrics["avg_price_per_sqm_cumulative"][1]),
+                    gross_profit_total_expected=None,
+                    gross_margin_expected_pct=_safe_decimal(metrics["gross_margin_expected_pct"][1]),
+                    location_confidence="city_only" if city else "unknown",
+                    value_origin_type="imported",
+                    confidence_level=confidence_level,
+                    matching_status="matched_existing_project" if matched_source else "unmatched",
+                    publish_status="draft",
+                    review_status="pending",
+                    review_notes="Parser-created candidate. Human review required before publish.",
+                )
+                session.add(candidate)
+                candidate_rows.append(candidate)
+                seen_candidate_keys.add(label_key)
+                await session.flush()
+
+                fields_to_insert: list[tuple[str, str | None, str | None, str, str]] = [
+                    (
+                        "canonical_name",
+                        extracted_label,
+                        matched_source.project_name if matched_source else extracted_label,
+                        "reported",
+                        confidence_level,
+                    )
+                ]
+                if city:
+                    fields_to_insert.append(
+                        ("city", city, city, city_origin, "high" if city_origin == "reported" else "medium")
+                    )
+                if neighborhood:
+                    fields_to_insert.append(
+                        ("neighborhood", neighborhood, neighborhood, neighborhood_origin, "medium")
+                    )
+                if project_status:
+                    fields_to_insert.append(
+                        ("project_status", project_status, project_status, project_status_origin, "medium")
+                    )
+                if permit_status:
+                    fields_to_insert.append(
+                        ("permit_status", permit_status, permit_status, permit_status_origin, "medium")
+                    )
+                for metric_field, (raw_value, normalized_value, origin) in metrics.items():
+                    if normalized_value is None:
+                        continue
+                    fields_to_insert.append(
+                        (
+                            metric_field,
+                            raw_value,
+                            _stringify(normalized_value),
+                            origin,
+                            "medium" if metric_field == "gross_margin_expected_pct" else "high",
+                        )
+                    )
+
+                for field_name, raw_value, normalized_value, origin, field_confidence in fields_to_insert:
+                    session.add(
+                        StagingFieldCandidate(
+                            id=uuid4(),
+                            candidate_id=candidate.id,
+                            field_name=field_name,
+                            raw_value=raw_value,
+                            normalized_value=normalized_value,
+                            source_page=section_row.source_page_from,
+                            source_section=section_row.section_name,
+                            source_table_name=section_row.raw_label or section_row.section_name,
+                            source_row_label=extracted_label,
+                            extraction_profile_key=section_row.extraction_profile_key,
+                            value_origin_type=origin if origin in {"reported", "inferred"} else "unknown",
+                            confidence_level=field_confidence,
+                            review_status="pending",
+                            review_notes="Parser-created field candidate. Review before publish.",
+                        )
+                    )
+                    field_count += 1
+
+                await refresh_candidate_match_suggestions(session, candidate)
+                await _sync_report_queue(
+                    session,
+                    report.id,
+                    candidate.id,
+                    "open",
+                    "Parser-created candidate awaiting review",
+                )
 
         parser_run.candidate_count = len(candidate_rows)
         parser_run.field_candidate_count = field_count
@@ -632,6 +983,18 @@ async def run_report_extraction(session: AsyncSession, report_id: UUID) -> dict 
         parser_run.diagnostics_json = {
             **diagnostics,
             "matched_projects": [str(candidate.matched_project_id) for candidate in candidate_rows if candidate.matched_project_id],
+            "section_kind_counts": dict(
+                Counter(section.section_kind or "summary_only" for section in persisted_sections)
+            ),
+            "extraction_profile_counts": dict(
+                Counter(section.extraction_profile_key or "unknown" for section in persisted_sections)
+            ),
+            "lifecycle_stage_distribution": dict(
+                Counter(candidate.candidate_lifecycle_stage or "unknown" for candidate in candidate_rows)
+            ),
+            "disclosure_level_distribution": dict(
+                Counter(candidate.candidate_disclosure_level or "unknown" for candidate in candidate_rows)
+            ),
         }
         parser_run.finished_at = datetime.now(UTC)
         await _record_audit(
