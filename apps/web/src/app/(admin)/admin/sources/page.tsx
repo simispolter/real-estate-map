@@ -15,7 +15,7 @@ export default async function AdminSourcesPage() {
       <Panel
         eyebrow="Admin Sources"
         title="Source registry and staging"
-        description="Reports live here as supporting source records. Use this area to register source metadata and create staging candidates that later flow into the project-centric intake queue."
+        description="Reports live here as supporting source records. Use this area to register annual reports, run extraction into staging, and hand reviewed candidates into the canonical project database."
       />
 
       {reportsState === "error" || companiesState === "error" ? (

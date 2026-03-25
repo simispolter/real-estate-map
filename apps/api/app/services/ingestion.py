@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -15,9 +15,13 @@ from app.models import (
     FieldProvenance,
     ParserRunLog,
     ProjectAddress,
+    ProjectCompletedInventoryDetail,
+    ProjectConstructionMetrics,
+    ProjectFinancingDetail,
     ProjectLandReserveDetail,
     ProjectMaster,
     ProjectMaterialDisclosure,
+    ProjectPlanningDetail,
     ProjectSnapshot,
     ProjectSensitivityScenario,
     ProjectUrbanRenewalDetail,
@@ -29,7 +33,7 @@ from app.models import (
     StagingReport,
     StagingSection,
 )
-from app.services.extraction_profiles import FAMILY_FIELD_GROUPS
+from app.services.extraction_profiles import FAMILY_FIELD_GROUPS, infer_data_families
 from app.services.identity_ops import get_persisted_candidate_match_suggestions, refresh_candidate_match_suggestions
 from app.services.admin_review import _get_placeholder_admin
 
@@ -47,10 +51,14 @@ DIFF_FIELDS = (
 )
 
 PROJECT_EXTENSION_KEYS = (
-    "material_disclosure",
-    "sensitivity_scenario",
-    "urban_renewal_detail",
-    "land_reserve_detail",
+    "construction_metrics",
+    "planning_metrics",
+    "completed_inventory_tail",
+    "financing_details",
+    "material_project_disclosure",
+    "sensitivity_scenarios",
+    "urban_renewal_pipeline",
+    "land_reserve_details",
 )
 PILOT_SECTION_KINDS = (
     "construction",
@@ -76,21 +84,74 @@ PILOT_KEY_FIELDS = (
 )
 
 EXTENSION_MODEL_MAP = {
-    "material_disclosure": ProjectMaterialDisclosure,
-    "sensitivity_scenario": ProjectSensitivityScenario,
-    "urban_renewal_detail": ProjectUrbanRenewalDetail,
-    "land_reserve_detail": ProjectLandReserveDetail,
+    "construction_metrics": ProjectConstructionMetrics,
+    "planning_metrics": ProjectPlanningDetail,
+    "completed_inventory_tail": ProjectCompletedInventoryDetail,
+    "financing_details": ProjectFinancingDetail,
+    "material_project_disclosure": ProjectMaterialDisclosure,
+    "sensitivity_scenarios": ProjectSensitivityScenario,
+    "urban_renewal_pipeline": ProjectUrbanRenewalDetail,
+    "land_reserve_details": ProjectLandReserveDetail,
 }
 
 EXTENSION_ENTITY_TYPE_MAP = {
-    "material_disclosure": "material_disclosure",
-    "sensitivity_scenario": "sensitivity_scenario",
-    "urban_renewal_detail": "urban_renewal_detail",
-    "land_reserve_detail": "land_reserve_detail",
+    "construction_metrics": "construction_metrics",
+    "planning_metrics": "planning_detail",
+    "completed_inventory_tail": "completed_inventory_detail",
+    "financing_details": "financing_detail",
+    "material_project_disclosure": "material_disclosure",
+    "sensitivity_scenarios": "sensitivity_scenario",
+    "urban_renewal_pipeline": "urban_renewal_detail",
+    "land_reserve_details": "land_reserve_detail",
 }
 
 EXTENSION_COLUMN_MAP = {
-    "material_disclosure": {
+    "construction_metrics": {
+        "construction.engineering_completion_rate": "engineering_completion_rate",
+        "construction.financial_completion_rate": "financial_completion_rate",
+        "construction.average_unit_sqm": "average_unit_sqm",
+        "construction.sold_area_sqm_period": "sold_area_sqm_period",
+        "construction.sold_area_sqm_cumulative": "sold_area_sqm_cumulative",
+        "construction.signed_area_sqm": "signed_area_sqm",
+        "construction.unsold_area_sqm": "unsold_area_sqm",
+        "construction.planned_construction_start_date": "planned_construction_start_date",
+        "construction.planned_construction_end_date": "planned_construction_end_date",
+        "construction.planned_marketing_start_date": "planned_marketing_start_date",
+        "construction.planned_marketing_end_date": "planned_marketing_end_date",
+    },
+    "planning_metrics": {
+        "planning.planning_status_text": "planning_status_text",
+        "planning.permit_status_text": "permit_status_text",
+        "planning.requested_rights_text": "requested_rights_text",
+        "planning.intended_uses": "intended_uses",
+        "planning.intended_units": "intended_units",
+        "planning.estimated_start_date": "estimated_start_date",
+        "planning.estimated_completion_date": "estimated_completion_date",
+        "planning.planned_marketing_start_date": "planned_marketing_start_date",
+        "planning.planning_dependencies": "planning_dependencies",
+    },
+    "completed_inventory_tail": {
+        "completed_inventory.completed_units": "completed_units",
+        "completed_inventory.delivered_units": "delivered_units",
+        "completed_inventory.unsold_completed_units": "unsold_completed_units",
+        "completed_inventory.inventory_cost_book_value": "inventory_cost_book_value",
+        "completed_inventory.available_for_sale_units": "available_for_sale_units",
+        "completed_inventory.occupancy_status_text": "occupancy_status_text",
+    },
+    "financing_details": {
+        "finance.financing_institution": "financing_institution",
+        "finance.facility_amount": "facility_amount",
+        "finance.utilization_amount": "utilization_amount",
+        "finance.unused_capacity": "unused_capacity",
+        "finance.financing_terms": "financing_terms",
+        "finance.covenants_summary": "covenants_summary",
+        "finance.non_recourse_flag": "non_recourse_flag",
+        "finance.surplus_release_conditions": "surplus_release_conditions",
+        "finance.pledged_or_secured_notes": "pledged_or_secured_notes",
+        "finance.advances_received": "advances_received",
+        "finance.receivables_from_signed_contracts": "receivables_from_signed_contracts",
+    },
+    "material_project_disclosure": {
         "material.financing_institution": "financing_institution",
         "material.facility_amount": "facility_amount",
         "material.utilization_amount": "utilization_amount",
@@ -104,7 +165,7 @@ EXTENSION_COLUMN_MAP = {
         "material.pledged_or_secured_notes": "pledged_or_secured_notes",
         "material.special_project_notes": "special_project_notes",
     },
-    "sensitivity_scenario": {
+    "sensitivity_scenarios": {
         "sensitivity.sales_price_plus_5_effect": "sales_price_plus_5_effect",
         "sensitivity.sales_price_plus_10_effect": "sales_price_plus_10_effect",
         "sensitivity.sales_price_minus_5_effect": "sales_price_minus_5_effect",
@@ -115,7 +176,7 @@ EXTENSION_COLUMN_MAP = {
         "sensitivity.construction_cost_minus_10_effect": "construction_cost_minus_10_effect",
         "sensitivity.base_gross_profit_not_yet_recognized": "base_gross_profit_not_yet_recognized",
     },
-    "urban_renewal_detail": {
+    "urban_renewal_pipeline": {
         "urban_renewal.existing_units": "existing_units",
         "urban_renewal.future_units_total": "future_units_total",
         "urban_renewal.future_units_marketed_by_company": "future_units_marketed_by_company",
@@ -129,7 +190,7 @@ EXTENSION_COLUMN_MAP = {
         "urban_renewal.planning_status_text": "planning_status_text",
         "urban_renewal.accounting_treatment_summary": "accounting_treatment_summary",
     },
-    "land_reserve_detail": {
+    "land_reserve_details": {
         "land_reserve.land_area_sqm": "land_area_sqm",
         "land_reserve.historical_cost": "historical_cost",
         "land_reserve.financing_cost": "financing_cost",
@@ -198,8 +259,19 @@ def _coerce_extension_value(column_name: str, value: str | None) -> object | Non
         "future_units_marketed_by_company",
         "future_units_for_existing_tenants",
         "intended_units",
+        "completed_units",
+        "delivered_units",
+        "unsold_completed_units",
+        "available_for_sale_units",
     }
     numeric_fields = {
+        "engineering_completion_rate",
+        "financial_completion_rate",
+        "average_unit_sqm",
+        "sold_area_sqm_period",
+        "sold_area_sqm_cumulative",
+        "signed_area_sqm",
+        "unsold_area_sqm",
         "facility_amount",
         "utilization_amount",
         "unused_capacity",
@@ -222,6 +294,17 @@ def _coerce_extension_value(column_name: str, value: str | None) -> object | Non
         "financing_cost",
         "planning_cost",
         "carrying_value",
+        "inventory_cost_book_value",
+        "advances_received",
+        "receivables_from_signed_contracts",
+    }
+    date_fields = {
+        "planned_construction_start_date",
+        "planned_construction_end_date",
+        "planned_marketing_start_date",
+        "planned_marketing_end_date",
+        "estimated_start_date",
+        "estimated_completion_date",
     }
     if column_name == "non_recourse_flag":
         return _parse_bool(value)
@@ -229,6 +312,11 @@ def _coerce_extension_value(column_name: str, value: str | None) -> object | Non
         return _parse_int(value)
     if column_name in numeric_fields:
         return _parse_numeric(value)
+    if column_name in date_fields:
+        try:
+            return date.fromisoformat(value.strip())
+        except Exception:
+            return value
     return value
 
 
@@ -357,9 +445,12 @@ def _serialize_candidate_summary(candidate: StagingProjectCandidate, matched_pro
         "candidate_lifecycle_stage": candidate.candidate_lifecycle_stage,
         "candidate_disclosure_level": candidate.candidate_disclosure_level,
         "candidate_section_kind": candidate.candidate_section_kind,
+        "detected_data_families": list(candidate.detected_data_families or []),
         "matching_status": candidate.matching_status,
         "publish_status": candidate.publish_status,
         "confidence_level": candidate.confidence_level,
+        "candidate_quality_score": candidate.candidate_quality_score,
+        "family_confidence_score": candidate.family_confidence_score,
         "review_status": candidate.review_status,
         "matched_project_id": candidate.matched_project_id,
         "matched_project_name": matched_project_name,
@@ -564,6 +655,10 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
         if candidate.matching_status == "ignored"
     )
 
+    parser_diagnostics = dict(latest_parser_run.diagnostics_json or {}) if latest_parser_run else {}
+    suppressed_rows_by_reason = parser_diagnostics.get("suppressed_row_counts", {})
+    noisy_sections = parser_diagnostics.get("noisy_sections", [])
+
     return {
         "report_id": report.id,
         "summary": {
@@ -593,6 +688,8 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
             "missing_key_field_total": sum(missing_field_counts.values()),
             "latest_parser_sections_found": latest_parser_run.sections_found if latest_parser_run else 0,
             "latest_parser_candidate_count": latest_parser_run.candidate_count if latest_parser_run else 0,
+            "suppressed_rows_total": parser_diagnostics.get("suppressed_row_total", 0),
+            "low_confidence_candidates": sum(1 for candidate in candidates if candidate.confidence_level == "low"),
         },
         "lifecycle_stage_distribution": [
             {"key": key, "count": count}
@@ -618,6 +715,11 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
             {"field_name": field_name, "missing_count": count}
             for field_name, count in sorted(missing_field_counts.items(), key=lambda item: (-item[1], item[0]))
         ],
+        "suppressed_rows_by_reason": [
+            {"key": key, "count": count}
+            for key, count in sorted(suppressed_rows_by_reason.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "noisy_sections": list(noisy_sections),
         "latest_parser_run": (
             {
                 "id": latest_parser_run.id,
@@ -761,6 +863,24 @@ async def create_candidate(session: AsyncSession, report_id: UUID, payload: dict
     staging_report = await _get_staging_report(session, report)
     admin_user = await _get_placeholder_admin(session)
     values = _sanitize_candidate_values(payload)
+    values["detected_data_families"] = values.get("detected_data_families") or infer_data_families(
+        lifecycle_stage=values.get("candidate_lifecycle_stage"),
+        disclosure_level=values.get("candidate_disclosure_level"),
+        section_kind=values.get("candidate_section_kind"),
+        project_business_type=values.get("project_business_type"),
+        metric_presence={
+            "has_sales_metrics": any(
+                values.get(field_name) is not None
+                for field_name in ("marketed_units", "sold_units_cumulative", "unsold_units")
+            ),
+            "has_financing_fields": any(
+                values.get(field_name) is not None
+                for field_name in ("gross_profit_total_expected", "gross_margin_expected_pct")
+            ),
+            "has_completed_inventory_fields": values.get("project_status") == "completed"
+            and values.get("unsold_units") is not None,
+        },
+    )
     candidate = StagingProjectCandidate(
         id=uuid4(),
         staging_report_id=staging_report.id,
@@ -776,6 +896,7 @@ async def create_candidate(session: AsyncSession, report_id: UUID, payload: dict
         source_table_name=values.get("source_table_name"),
         source_row_label=values.get("source_row_label"),
         extraction_profile_key=values.get("extraction_profile_key"),
+        detected_data_families=values.get("detected_data_families"),
         project_business_type=values.get("project_business_type"),
         government_program_type=values.get("government_program_type", "none"),
         project_urban_renewal_type=values.get("project_urban_renewal_type", "none"),
@@ -977,6 +1098,7 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
         "source_table_name": candidate.source_table_name,
         "source_row_label": candidate.source_row_label,
         "extraction_profile_key": candidate.extraction_profile_key,
+        "detected_data_families": list(candidate.detected_data_families or []),
         "project_business_type": candidate.project_business_type,
         "government_program_type": candidate.government_program_type,
         "project_urban_renewal_type": candidate.project_urban_renewal_type,
@@ -992,6 +1114,8 @@ async def get_candidate_detail(session: AsyncSession, candidate_id: UUID) -> dic
         "location_confidence": candidate.location_confidence,
         "value_origin_type": candidate.value_origin_type,
         "confidence_level": candidate.confidence_level,
+        "candidate_quality_score": candidate.candidate_quality_score,
+        "family_confidence_score": candidate.family_confidence_score,
         "matching_status": candidate.matching_status,
         "publish_status": candidate.publish_status,
         "review_status": candidate.review_status,
@@ -1065,6 +1189,36 @@ async def update_candidate(session: AsyncSession, candidate_id: UUID, payload: d
 
     admin_user = await _get_placeholder_admin(session)
     values = _sanitize_candidate_values(payload)
+    candidate_basis = {
+        "candidate_lifecycle_stage": values.get("candidate_lifecycle_stage", candidate.candidate_lifecycle_stage),
+        "candidate_disclosure_level": values.get("candidate_disclosure_level", candidate.candidate_disclosure_level),
+        "candidate_section_kind": values.get("candidate_section_kind", candidate.candidate_section_kind),
+        "project_business_type": values.get("project_business_type", candidate.project_business_type),
+        "project_status": values.get("project_status", candidate.project_status),
+        "marketed_units": values.get("marketed_units", candidate.marketed_units),
+        "sold_units_cumulative": values.get("sold_units_cumulative", candidate.sold_units_cumulative),
+        "unsold_units": values.get("unsold_units", candidate.unsold_units),
+        "gross_profit_total_expected": values.get("gross_profit_total_expected", candidate.gross_profit_total_expected),
+        "gross_margin_expected_pct": values.get("gross_margin_expected_pct", candidate.gross_margin_expected_pct),
+    }
+    values["detected_data_families"] = values.get("detected_data_families") or infer_data_families(
+        lifecycle_stage=candidate_basis["candidate_lifecycle_stage"],
+        disclosure_level=candidate_basis["candidate_disclosure_level"],
+        section_kind=candidate_basis["candidate_section_kind"],
+        project_business_type=candidate_basis["project_business_type"],
+        metric_presence={
+            "has_sales_metrics": any(
+                candidate_basis[field_name] is not None
+                for field_name in ("marketed_units", "sold_units_cumulative", "unsold_units")
+            ),
+            "has_financing_fields": any(
+                candidate_basis[field_name] is not None
+                for field_name in ("gross_profit_total_expected", "gross_margin_expected_pct")
+            ),
+            "has_completed_inventory_fields": candidate_basis["project_status"] == "completed"
+            and candidate_basis["unsold_units"] is not None,
+        },
+    )
     diffs: dict[str, dict[str, object | None]] = {}
     for field_name in (
         "candidate_project_name",
@@ -1077,6 +1231,7 @@ async def update_candidate(session: AsyncSession, candidate_id: UUID, payload: d
         "source_table_name",
         "source_row_label",
         "extraction_profile_key",
+        "detected_data_families",
         "project_business_type",
         "government_program_type",
         "project_urban_renewal_type",
@@ -1428,6 +1583,49 @@ async def publish_candidate(session: AsyncSession, candidate_id: UUID, reviewer_
     snapshot.needs_admin_review = False
     await session.flush()
     extension_payloads = _collect_extension_payloads(field_candidates)
+    detected_data_families = infer_data_families(
+        lifecycle_stage=snapshot.lifecycle_stage,
+        disclosure_level=snapshot.disclosure_level,
+        section_kind=snapshot.source_section_kind,
+        project_business_type=project.project_business_type,
+        metric_presence={
+            "has_construction_fields": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in (
+                    "engineering_completion_rate",
+                    "financial_completion_rate",
+                    "average_unit_sqm",
+                    "signed_area_sqm",
+                    "unsold_area_sqm",
+                    "planned_construction_start_date",
+                    "planned_construction_end_date",
+                )
+            ),
+            "has_planning_fields": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in ("planning_status", "estimated_start_date", "estimated_completion_date")
+            ),
+            "has_sales_metrics": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in ("marketed_units", "sold_units_cumulative", "unsold_units")
+            ),
+            "has_financing_fields": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in (
+                    "gross_profit_total_expected",
+                    "gross_margin_expected_pct",
+                    "advances_received",
+                    "receivables_from_signed_contracts",
+                )
+            ),
+            "has_completed_inventory_fields": snapshot.unsold_units is not None and snapshot.project_status == "completed",
+            "has_sensitivity_fields": "sensitivity_scenarios" in extension_payloads,
+        },
+        extension_family_keys=set(extension_payloads.keys()),
+    )
+    snapshot.detected_data_families = list(
+        dict.fromkeys([*(candidate.detected_data_families or []), *detected_data_families, *extension_payloads.keys()])
+    )
     extension_summaries = await _upsert_project_extension_rows(
         session,
         project=project,

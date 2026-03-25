@@ -185,9 +185,12 @@ export interface SelectOption {
 export interface FiltersMetadata {
   companies: SelectOption[];
   cities: string[];
+  lifecycleStages: string[];
+  disclosureLevels: string[];
   projectBusinessTypes: string[];
   governmentProgramTypes: string[];
   projectUrbanRenewalTypes: string[];
+  projectStatuses: string[];
   permitStatuses: string[];
   locationConfidences: string[];
 }

@@ -11,8 +11,9 @@ RUN npm ci
 
 COPY apps/web /workspace/apps/web
 COPY packages/shared /workspace/packages/shared
-RUN chmod +x /workspace/apps/web/scripts/docker-dev.sh
+RUN sed -i 's/\r$//' /workspace/apps/web/scripts/docker-dev.sh \
+  && chmod +x /workspace/apps/web/scripts/docker-dev.sh
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev", "--workspace", "@real-estat-map/web", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["/bin/sh", "/workspace/apps/web/scripts/docker-dev.sh"]

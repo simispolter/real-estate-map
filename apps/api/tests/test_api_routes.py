@@ -149,7 +149,12 @@ def project_detail_payload() -> dict:
 
 
 def test_projects_list_route(monkeypatch):
+    captured = {}
+
     async def fake_list_projects(_session, _filters):
+        captured["lifecycle_stage"] = _filters.lifecycle_stage
+        captured["disclosure_level"] = _filters.disclosure_level
+        captured["project_status"] = _filters.project_status
         return (
             [
                 {
@@ -185,7 +190,14 @@ def test_projects_list_route(monkeypatch):
     app.dependency_overrides[get_db_session] = _override_db
 
     with TestClient(app) as client:
-        response = client.get("/api/v1/projects")
+        response = client.get(
+            "/api/v1/projects",
+            params={
+                "lifecycle_stage": "under_construction",
+                "disclosure_level": "operational_full",
+                "project_status": "marketing",
+            },
+        )
 
     app.dependency_overrides.clear()
 
@@ -193,6 +205,11 @@ def test_projects_list_route(monkeypatch):
     payload = response.json()
     assert payload["pagination"]["total"] == 1
     assert payload["items"][0]["canonical_name"] == "Test Project"
+    assert captured == {
+        "lifecycle_stage": "under_construction",
+        "disclosure_level": "operational_full",
+        "project_status": "marketing",
+    }
 
 
 def test_project_detail_route(monkeypatch):
@@ -246,9 +263,12 @@ def test_filters_metadata_route(monkeypatch):
         return {
             "companies": [{"id": COMPANY_ID, "label": "Test Company"}],
             "cities": ["Tel Aviv"],
+            "lifecycle_stages": ["under_construction"],
+            "disclosure_levels": ["operational_full"],
             "project_business_types": ["regular_dev"],
             "government_program_types": ["none"],
             "project_urban_renewal_types": ["none"],
+            "project_statuses": ["marketing"],
             "permit_statuses": ["pending"],
             "location_confidences": ["city_only", "approximate"],
         }
@@ -263,6 +283,8 @@ def test_filters_metadata_route(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["cities"] == ["Tel Aviv"]
+    assert response.json()["lifecycle_stages"] == ["under_construction"]
+    assert response.json()["project_statuses"] == ["marketing"]
     assert response.json()["location_confidences"] == ["city_only", "approximate"]
 
 

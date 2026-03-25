@@ -227,9 +227,10 @@ def test_admin_candidate_publish_route(monkeypatch):
 
 
 def test_admin_report_extract_route(monkeypatch):
-    async def fake_run_report_extraction(_session, _report_id):
+    async def fake_run_report_extraction(_session, _report_id, conversion_backend=None):
         extracted = report_detail_payload()
         extracted["candidate_count"] = 3
+        extracted["conversion_backend"] = conversion_backend
         return extracted
 
     monkeypatch.setattr(admin_ingestion_endpoints, "run_report_extraction", fake_run_report_extraction)

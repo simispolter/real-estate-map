@@ -1,6 +1,7 @@
 .env
 .env.local
 .venv/
+.venv-benchmark/
 __pycache__/
 *.pyc
 outputs/tmp/

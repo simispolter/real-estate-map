@@ -741,9 +741,12 @@ export async function getFiltersMetadata(): Promise<FiltersMetadata> {
       label: stringOrNull(company.label) ?? "Unknown company",
     })),
     cities: safeArray<string>(response?.cities).filter((value) => typeof value === "string"),
+    lifecycleStages: safeArray<string>(response?.lifecycle_stages).filter((value) => typeof value === "string"),
+    disclosureLevels: safeArray<string>(response?.disclosure_levels).filter((value) => typeof value === "string"),
     projectBusinessTypes: safeArray<string>(response?.project_business_types).filter((value) => typeof value === "string"),
     governmentProgramTypes: safeArray<string>(response?.government_program_types).filter((value) => typeof value === "string"),
     projectUrbanRenewalTypes: safeArray<string>(response?.project_urban_renewal_types).filter((value) => typeof value === "string"),
+    projectStatuses: safeArray<string>(response?.project_statuses).filter((value) => typeof value === "string"),
     permitStatuses: safeArray<string>(response?.permit_statuses).filter((value) => typeof value === "string"),
     locationConfidences: safeArray<string>(response?.location_confidences).filter((value) => typeof value === "string"),
   };

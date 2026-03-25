@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
     slow_query_threshold_ms: int = Field(default=75, alias="SLOW_QUERY_THRESHOLD_MS")
     request_timing_threshold_ms: int = Field(default=150, alias="REQUEST_TIMING_THRESHOLD_MS")
+    document_conversion_backend: str = Field(default="docling", alias="DOCUMENT_CONVERSION_BACKEND")
+    document_conversion_ocr_mode: str = Field(default="off", alias="DOCUMENT_CONVERSION_OCR_MODE")
 
     model_config = SettingsConfigDict(
         env_file=".env",

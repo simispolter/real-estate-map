@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
@@ -88,10 +88,11 @@ async def patch_admin_report(
 @router.post("/reports/{report_id}/extract", response_model=AdminReportDetailResponse)
 async def post_admin_report_extract(
     report_id: UUID,
+    backend: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db_session),
 ) -> AdminReportDetailResponse:
     try:
-        report = await run_report_extraction(session, report_id)
+        report = await run_report_extraction(session, report_id, conversion_backend=backend)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if report is None:

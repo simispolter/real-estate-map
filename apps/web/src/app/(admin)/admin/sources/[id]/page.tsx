@@ -24,7 +24,7 @@ export default async function AdminSourceDetailPage({ params, searchParams }: Pa
       <Panel
         eyebrow="Admin Sources"
         title="Source staging workspace"
-        description="Maintain source metadata, create staging project candidates, and hand them into the intake workflow and canonical publish flow when they are ready."
+        description="Keep the report workflow practical: update the source record, extract project rows into staging, review candidates, and publish snapshots into canonical projects."
       />
       <AdminReportWorkspace initialCandidateId={candidate ?? null} initialReport={result.item} />
     </>

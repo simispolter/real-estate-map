@@ -15,11 +15,15 @@ from app.models import (
     FieldProvenance,
     ProjectAddress,
     ProjectAlias,
+    ProjectCompletedInventoryDetail,
+    ProjectConstructionMetrics,
     ProjectDuplicateSuggestion,
+    ProjectFinancingDetail,
     ProjectLandReserveDetail,
     ProjectMergeLog,
     ProjectMaster,
     ProjectMaterialDisclosure,
+    ProjectPlanningDetail,
     ProjectSnapshot,
     ProjectSensitivityScenario,
     ProjectUrbanRenewalDetail,
@@ -28,6 +32,7 @@ from app.models import (
     StagingReport,
 )
 from app.services.catalog import _confidence_level, _location_quality, _value_origin_summary
+from app.services.extraction_profiles import infer_data_families
 from app.services.identity_ops import assess_snapshot_chronology, get_coverage_dashboard, list_duplicate_suggestions, normalize_text
 from app.services.spatial import (
     CITY_CENTROIDS,
@@ -73,6 +78,38 @@ def _serialize_extension_row(row: object | None, fields: tuple[str, ...]) -> dic
 
 
 async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, snapshot_id: UUID) -> dict[str, dict[str, object | None]]:
+    construction = (
+        await session.execute(
+            select(ProjectConstructionMetrics).where(
+                ProjectConstructionMetrics.project_id == project_id,
+                ProjectConstructionMetrics.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    planning = (
+        await session.execute(
+            select(ProjectPlanningDetail).where(
+                ProjectPlanningDetail.project_id == project_id,
+                ProjectPlanningDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    completed_inventory = (
+        await session.execute(
+            select(ProjectCompletedInventoryDetail).where(
+                ProjectCompletedInventoryDetail.project_id == project_id,
+                ProjectCompletedInventoryDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    financing = (
+        await session.execute(
+            select(ProjectFinancingDetail).where(
+                ProjectFinancingDetail.project_id == project_id,
+                ProjectFinancingDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
     material = (
         await session.execute(
             select(ProjectMaterialDisclosure).where(
@@ -109,7 +146,64 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
     return {
         key: value
         for key, value in {
-            "material_disclosure": _serialize_extension_row(
+            "construction_metrics": _serialize_extension_row(
+                construction,
+                (
+                    "engineering_completion_rate",
+                    "financial_completion_rate",
+                    "average_unit_sqm",
+                    "sold_area_sqm_period",
+                    "sold_area_sqm_cumulative",
+                    "signed_area_sqm",
+                    "unsold_area_sqm",
+                    "planned_construction_start_date",
+                    "planned_construction_end_date",
+                    "planned_marketing_start_date",
+                    "planned_marketing_end_date",
+                ),
+            ),
+            "planning_metrics": _serialize_extension_row(
+                planning,
+                (
+                    "planning_status_text",
+                    "permit_status_text",
+                    "requested_rights_text",
+                    "intended_uses",
+                    "intended_units",
+                    "estimated_start_date",
+                    "estimated_completion_date",
+                    "planned_marketing_start_date",
+                    "planning_dependencies",
+                ),
+            ),
+            "completed_inventory_tail": _serialize_extension_row(
+                completed_inventory,
+                (
+                    "completed_units",
+                    "delivered_units",
+                    "unsold_completed_units",
+                    "inventory_cost_book_value",
+                    "available_for_sale_units",
+                    "occupancy_status_text",
+                ),
+            ),
+            "financing_details": _serialize_extension_row(
+                financing,
+                (
+                    "financing_institution",
+                    "facility_amount",
+                    "utilization_amount",
+                    "unused_capacity",
+                    "financing_terms",
+                    "covenants_summary",
+                    "non_recourse_flag",
+                    "surplus_release_conditions",
+                    "pledged_or_secured_notes",
+                    "advances_received",
+                    "receivables_from_signed_contracts",
+                ),
+            ),
+            "material_project_disclosure": _serialize_extension_row(
                 material,
                 (
                     "financing_institution",
@@ -126,7 +220,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "special_project_notes",
                 ),
             ),
-            "sensitivity_scenario": _serialize_extension_row(
+            "sensitivity_scenarios": _serialize_extension_row(
                 sensitivity,
                 (
                     "sales_price_plus_5_effect",
@@ -140,7 +234,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "base_gross_profit_not_yet_recognized",
                 ),
             ),
-            "urban_renewal_detail": _serialize_extension_row(
+            "urban_renewal_pipeline": _serialize_extension_row(
                 urban_renewal,
                 (
                     "existing_units",
@@ -157,7 +251,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "accounting_treatment_summary",
                 ),
             ),
-            "land_reserve_detail": _serialize_extension_row(
+            "land_reserve_details": _serialize_extension_row(
                 land_reserve,
                 (
                     "land_area_sqm",
@@ -413,6 +507,7 @@ async def _serialize_snapshot_summary(session: AsyncSession, snapshot: ProjectSn
         "chronology_notes": snapshot.chronology_notes,
         "notes_internal": snapshot.notes_internal,
         "diff_summary": _snapshot_diff(snapshot, previous),
+        "data_families": list(snapshot.detected_data_families or extension_blocks.keys()),
         "extension_blocks": extension_blocks,
     }
 
@@ -434,6 +529,10 @@ async def _project_related_provenance(
                         "project_master",
                         "snapshot",
                         "address",
+                        "construction_metrics",
+                        "planning_detail",
+                        "completed_inventory_detail",
+                        "financing_detail",
                         "material_disclosure",
                         "sensitivity_scenario",
                         "urban_renewal_detail",
@@ -532,6 +631,7 @@ async def _build_project_detail(session: AsyncSession, project: ProjectMaster) -
                     "gross_margin_expected_pct",
                 ],
             ),
+            "data_families": list(latest_snapshot.detected_data_families or extension_blocks.keys()),
             "extension_blocks": extension_blocks,
         }
 
@@ -1214,6 +1314,24 @@ async def create_project_snapshot(session: AsyncSession, project_id: UUID, paylo
         payload["snapshot_date"],
         report.id,
     )
+    detected_data_families = infer_data_families(
+        lifecycle_stage=payload.get("lifecycle_stage") or project.lifecycle_stage,
+        disclosure_level=payload.get("disclosure_level") or project.disclosure_level,
+        section_kind=payload.get("source_section_kind"),
+        project_business_type=project.project_business_type,
+        metric_presence={
+            "has_sales_metrics": any(
+                payload.get(field_name) is not None
+                for field_name in ("marketed_units", "sold_units_cumulative", "unsold_units")
+            ),
+            "has_financing_fields": any(
+                payload.get(field_name) is not None
+                for field_name in ("gross_profit_total_expected", "gross_margin_expected_pct")
+            ),
+            "has_completed_inventory_fields": payload.get("project_status") == "completed"
+            and payload.get("unsold_units") is not None,
+        },
+    )
     snapshot = ProjectSnapshot(
         id=uuid4(),
         project_id=project_id,
@@ -1229,6 +1347,7 @@ async def create_project_snapshot(session: AsyncSession, project_id: UUID, paylo
         avg_price_per_sqm_cumulative=payload.get("avg_price_per_sqm_cumulative"),
         gross_profit_total_expected=payload.get("gross_profit_total_expected"),
         gross_margin_expected_pct=payload.get("gross_margin_expected_pct"),
+        detected_data_families=detected_data_families,
         permit_status=payload.get("permit_status"),
         project_status=payload.get("project_status"),
         chronology_status=chronology_status,
@@ -1346,6 +1465,23 @@ async def update_snapshot(session: AsyncSession, snapshot_id: UUID, payload: dic
                     review_note=reason,
                 )
 
+    snapshot.detected_data_families = infer_data_families(
+        lifecycle_stage=snapshot.lifecycle_stage or project.lifecycle_stage,
+        disclosure_level=snapshot.disclosure_level or project.disclosure_level,
+        section_kind=snapshot.source_section_kind,
+        project_business_type=project.project_business_type,
+        metric_presence={
+            "has_sales_metrics": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in ("marketed_units", "sold_units_cumulative", "unsold_units")
+            ),
+            "has_financing_fields": any(
+                getattr(snapshot, field_name) is not None
+                for field_name in ("gross_profit_total_expected", "gross_margin_expected_pct")
+            ),
+            "has_completed_inventory_fields": snapshot.project_status == "completed" and snapshot.unsold_units is not None,
+        },
+    )
     snapshot.chronology_status = chronology_status
     snapshot.chronology_notes = chronology_notes
 

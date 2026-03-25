@@ -85,6 +85,7 @@ class AdminSnapshotSummary(BaseModel):
     chronology_notes: str | None = None
     notes_internal: str | None = None
     diff_summary: dict[str, dict[str, str | bool | None]] = Field(default_factory=dict)
+    data_families: list[str] = Field(default_factory=list)
     extension_blocks: dict[str, dict[str, object | None]] = Field(default_factory=dict)
 
 

@@ -35,10 +35,10 @@ export function AdminReportsDashboard({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [form, setForm] = useState<ReportFormState>({
-    company_id: companies[0]?.id ?? "",
-    report_name: "",
-    report_type: "q3",
-    period_type: "quarterly",
+      company_id: companies[0]?.id ?? "",
+      report_name: "",
+      report_type: "annual",
+      period_type: "annual",
     period_end_date: "",
     published_at: "",
     source_url: "",
@@ -114,7 +114,7 @@ export function AdminReportsDashboard({
           <p className="eyebrow">Report Registry</p>
           <h2>Create report record</h2>
           <p className="panel-copy">
-            Register a real source report first. Staging candidates attach to this record and only reach canonical tables through publish.
+            Register the source report here first. From there, the working path is extraction into staging, manual review, and explicit publish into canonical projects and snapshots.
           </p>
         </div>
 

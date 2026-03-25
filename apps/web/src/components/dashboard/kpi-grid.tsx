@@ -14,8 +14,7 @@ export function KpiGrid({
       <div className="section-heading">
         <h2>{title}</h2>
         <p className="panel-copy">
-          KPI placeholders are intentionally wired to the future canonical snapshot layer instead of
-          hardcoded demo numbers.
+          These counts are taken from the current canonical dataset, not from static demo content.
         </p>
       </div>
       {safeItems.length > 0 ? (

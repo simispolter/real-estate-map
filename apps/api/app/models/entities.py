@@ -87,6 +87,17 @@ source_section_kind_enum = pg_enum(
     "material_project",
     "summary_only",
 )
+project_data_family_enum = pg_enum(
+    "project_data_family_enum",
+    "construction_metrics",
+    "planning_metrics",
+    "urban_renewal_pipeline",
+    "material_project_disclosure",
+    "land_reserve_details",
+    "completed_inventory_tail",
+    "financing_details",
+    "sensitivity_scenarios",
+)
 location_confidence_enum = pg_enum("location_confidence_enum", "exact", "approximate", "city_only", "unknown")
 classification_confidence_enum = pg_enum("classification_confidence_enum", "high", "medium", "low")
 mapping_review_status_enum = pg_enum("mapping_review_status_enum", "pending", "reviewed", "approved", "rejected")
@@ -127,6 +138,10 @@ provenance_entity_type_enum = pg_enum(
     "snapshot",
     "land_reserve",
     "address",
+    "construction_metrics",
+    "planning_detail",
+    "completed_inventory_detail",
+    "financing_detail",
     "material_disclosure",
     "sensitivity_scenario",
     "urban_renewal_detail",
@@ -331,6 +346,10 @@ class ProjectMaster(TimestampMixin, Base):
     aliases: Mapped[list["ProjectAlias"]] = relationship(back_populates="project")
     addresses: Mapped[list["ProjectAddress"]] = relationship(back_populates="project")
     snapshots: Mapped[list["ProjectSnapshot"]] = relationship(back_populates="project")
+    construction_metrics: Mapped[list["ProjectConstructionMetrics"]] = relationship(back_populates="project")
+    planning_details: Mapped[list["ProjectPlanningDetail"]] = relationship(back_populates="project")
+    completed_inventory_details: Mapped[list["ProjectCompletedInventoryDetail"]] = relationship(back_populates="project")
+    financing_details: Mapped[list["ProjectFinancingDetail"]] = relationship(back_populates="project")
     material_disclosures: Mapped[list["ProjectMaterialDisclosure"]] = relationship(back_populates="project")
     sensitivity_scenarios: Mapped[list["ProjectSensitivityScenario"]] = relationship(back_populates="project")
     urban_renewal_details: Mapped[list["ProjectUrbanRenewalDetail"]] = relationship(back_populates="project")
@@ -464,6 +483,7 @@ class ProjectSnapshot(TimestampMixin, Base):
     planned_marketing_end_date: Mapped[date | None] = mapped_column(Date)
     estimated_start_date: Mapped[date | None] = mapped_column(Date)
     estimated_completion_date: Mapped[date | None] = mapped_column(Date)
+    detected_data_families: Mapped[list[str] | None] = mapped_column(JSONB)
     needs_admin_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     chronology_status: Mapped[str] = mapped_column(snapshot_chronology_status_enum, nullable=False, default="ok")
     chronology_notes: Mapped[str | None] = mapped_column(Text)
@@ -471,10 +491,139 @@ class ProjectSnapshot(TimestampMixin, Base):
 
     project: Mapped["ProjectMaster"] = relationship(back_populates="snapshots")
     report: Mapped["Report"] = relationship(back_populates="project_snapshots")
+    construction_metrics: Mapped[list["ProjectConstructionMetrics"]] = relationship(back_populates="snapshot")
+    planning_details: Mapped[list["ProjectPlanningDetail"]] = relationship(back_populates="snapshot")
+    completed_inventory_details: Mapped[list["ProjectCompletedInventoryDetail"]] = relationship(back_populates="snapshot")
+    financing_details: Mapped[list["ProjectFinancingDetail"]] = relationship(back_populates="snapshot")
     material_disclosures: Mapped[list["ProjectMaterialDisclosure"]] = relationship(back_populates="snapshot")
     sensitivity_scenarios: Mapped[list["ProjectSensitivityScenario"]] = relationship(back_populates="snapshot")
     urban_renewal_details: Mapped[list["ProjectUrbanRenewalDetail"]] = relationship(back_populates="snapshot")
     land_reserve_details: Mapped[list["ProjectLandReserveDetail"]] = relationship(back_populates="snapshot")
+
+
+class ProjectConstructionMetrics(TimestampMixin, Base):
+    __tablename__ = "project_construction_metrics"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    engineering_completion_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    financial_completion_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    average_unit_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    sold_area_sqm_period: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    sold_area_sqm_cumulative: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    signed_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    unsold_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    planned_construction_start_date: Mapped[date | None] = mapped_column(Date)
+    planned_construction_end_date: Mapped[date | None] = mapped_column(Date)
+    planned_marketing_start_date: Mapped[date | None] = mapped_column(Date)
+    planned_marketing_end_date: Mapped[date | None] = mapped_column(Date)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="construction_metrics")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="construction_metrics")
+
+
+class ProjectPlanningDetail(TimestampMixin, Base):
+    __tablename__ = "project_planning_details"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    planning_status_text: Mapped[str | None] = mapped_column(Text)
+    permit_status_text: Mapped[str | None] = mapped_column(Text)
+    requested_rights_text: Mapped[str | None] = mapped_column(Text)
+    intended_uses: Mapped[str | None] = mapped_column(Text)
+    intended_units: Mapped[int | None] = mapped_column(Integer)
+    estimated_start_date: Mapped[date | None] = mapped_column(Date)
+    estimated_completion_date: Mapped[date | None] = mapped_column(Date)
+    planned_marketing_start_date: Mapped[date | None] = mapped_column(Date)
+    planning_dependencies: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="planning_details")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="planning_details")
+
+
+class ProjectCompletedInventoryDetail(TimestampMixin, Base):
+    __tablename__ = "project_completed_inventory_details"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    completed_units: Mapped[int | None] = mapped_column(Integer)
+    delivered_units: Mapped[int | None] = mapped_column(Integer)
+    unsold_completed_units: Mapped[int | None] = mapped_column(Integer)
+    inventory_cost_book_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    available_for_sale_units: Mapped[int | None] = mapped_column(Integer)
+    occupancy_status_text: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="completed_inventory_details")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="completed_inventory_details")
+
+
+class ProjectFinancingDetail(TimestampMixin, Base):
+    __tablename__ = "project_financing_details"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_master.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("project_snapshots.id", ondelete="CASCADE"),
+    )
+    report_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("reports.id", ondelete="SET NULL"),
+    )
+    financing_institution: Mapped[str | None] = mapped_column(Text)
+    facility_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    utilization_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    unused_capacity: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    financing_terms: Mapped[str | None] = mapped_column(Text)
+    covenants_summary: Mapped[str | None] = mapped_column(Text)
+    non_recourse_flag: Mapped[bool | None] = mapped_column(Boolean)
+    surplus_release_conditions: Mapped[str | None] = mapped_column(Text)
+    pledged_or_secured_notes: Mapped[str | None] = mapped_column(Text)
+    advances_received: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    receivables_from_signed_contracts: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+
+    project: Mapped["ProjectMaster"] = relationship(back_populates="financing_details")
+    snapshot: Mapped["ProjectSnapshot | None"] = relationship(back_populates="financing_details")
 
 
 class ProjectMaterialDisclosure(TimestampMixin, Base):
@@ -749,9 +898,12 @@ class StagingProjectCandidate(TimestampMixin, Base):
     avg_price_per_sqm_cumulative: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     gross_profit_total_expected: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     gross_margin_expected_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    detected_data_families: Mapped[list[str] | None] = mapped_column(JSONB)
     location_confidence: Mapped[str] = mapped_column(location_confidence_enum, nullable=False, default="unknown")
     value_origin_type: Mapped[str] = mapped_column(value_origin_type_enum, nullable=False, default="manual")
     confidence_level: Mapped[str] = mapped_column(classification_confidence_enum, nullable=False, default="medium")
+    candidate_quality_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    family_confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     matching_status: Mapped[str] = mapped_column(candidate_match_status_enum, nullable=False, default="unmatched")
     publish_status: Mapped[str] = mapped_column(staging_publish_status_enum, nullable=False, default="draft")
     review_status: Mapped[str] = mapped_column(review_status_enum, nullable=False, default="pending")

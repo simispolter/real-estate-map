@@ -38,7 +38,9 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: real-estat-map-web
-    command: /workspace/apps/web/scripts/docker-dev.sh
+    command:
+      - /bin/sh
+      - /workspace/apps/web/scripts/docker-dev.sh
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
       INTERNAL_API_BASE_URL: http://api:8000

@@ -129,6 +129,7 @@ class ProjectSnapshotDetail(BaseModel):
     gross_profit_total_expected: Decimal | None = None
     gross_margin_expected_pct: Decimal | None = None
     trust: dict[str, ValueTrustResponse] = Field(default_factory=dict)
+    data_families: list[str] = Field(default_factory=list)
     extension_blocks: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -284,9 +285,12 @@ class CompanyProjectsResponse(BaseModel):
 class FiltersMetadataResponse(BaseModel):
     companies: list[SelectOption] = Field(default_factory=list)
     cities: list[str] = Field(default_factory=list)
+    lifecycle_stages: list[str] = Field(default_factory=list)
+    disclosure_levels: list[str] = Field(default_factory=list)
     project_business_types: list[str] = Field(default_factory=list)
     government_program_types: list[str] = Field(default_factory=list)
     project_urban_renewal_types: list[str] = Field(default_factory=list)
+    project_statuses: list[str] = Field(default_factory=list)
     permit_statuses: list[str] = Field(default_factory=list)
     location_confidences: list[str] = Field(default_factory=list)
 

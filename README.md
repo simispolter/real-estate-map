@@ -42,6 +42,25 @@
 
 ## Technical Setup
 
+### Working core product
+
+This repository is currently optimized around a practical ingestion-and-database flow:
+
+- source report registry
+- born-digital PDF reading
+- extraction into staging
+- admin review of report candidates
+- canonical projects and project snapshots
+- filtering, export, and database-facing analysis
+
+The following areas are intentionally de-emphasized in the current phase:
+
+- map-first browsing polish
+- experimental multi-backend document conversion
+- OCR-heavy workflows
+- parser benchmark tooling as part of the main admin path
+- advanced public UX work that does not improve ingestion, review, or database quality
+
 ### Repository structure
 
 - `apps/web` - Next.js + TypeScript public/admin UI shell
@@ -79,11 +98,18 @@ If you already initialized the Postgres volume before the Phase 2 migration chan
 - Admin project detail: `http://localhost:3000/admin/projects/<project-id>`
 - Admin intake queue: `http://localhost:3000/admin/intake`
 - Admin source registry: `http://localhost:3000/admin/sources`
+- Admin source workspace: `http://localhost:3000/admin/sources/<report-id>`
 - Admin is now organized around:
   - Projects as the core canonical workspace
   - Intake as the candidate review queue
   - Sources as the supporting report registry
-- Current admin flow supports direct canonical project editing, manual project creation, alias management, snapshot creation/editing, address management, linked intake/source review, and audit logging with a placeholder admin user.
+- Current working ingestion flow:
+  - create a source report
+  - run extraction into staging
+  - review candidates in the source workspace or intake
+  - match an existing project or mark a new one
+  - publish into canonical projects and snapshots
+  - inspect the resulting database via `/projects` and CSV export
 
 ### Phase 4 Manual Ingestion Bridge
 

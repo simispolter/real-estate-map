@@ -1,0 +1,696 @@
+{
+  "generated_at": "2026-03-25 19:45:39.409501+00:00",
+  "report_count": 5,
+  "backends": [
+    "pypdf"
+  ],
+  "recommended_default_backend": "pypdf",
+  "backend_summary": {
+    "pypdf": {
+      "average_score": 0.3778,
+      "average_project_recall": 0.4983,
+      "average_family_recall": 0.2167,
+      "average_field_coverage": 0.4513,
+      "average_unmatched_rate": 0.9068,
+      "average_table_quality": 1.0,
+      "average_provenance_preservation": 1.0
+    }
+  },
+  "reports": [
+    {
+      "report_key": "aura_2025_annual",
+      "company_name_he": "אאורה",
+      "report_name": "דוח תקופתי לשנת 2025",
+      "source_file_path": "C:\\Users\\simis\\Downloads\\P1729852-00.pdf",
+      "expected_project_count": 4,
+      "expected_family_counts": {
+        "construction": 2,
+        "planning": 2,
+        "completed_unsold_tail": 0,
+        "land_reserve": 0,
+        "urban_renewal_pipeline": 0,
+        "material_project": 0
+      },
+      "results": [
+        {
+          "backend": "pypdf",
+          "candidate_count": 46,
+          "expected_project_count": 4,
+          "matched_expected_count": 2,
+          "project_recall": 0.5,
+          "family_recall": 0.25,
+          "field_coverage": 0.4,
+          "false_split_count": 0,
+          "false_merge_count": 0,
+          "unmatched_rate": 0.9565,
+          "table_quality": 1.0,
+          "provenance_preservation": 1.0,
+          "missing_expected_projects": [
+            "אמפייר רמת גן - מגדל התמרים מגדים",
+            "אאורה פיבקו - בת ים"
+          ],
+          "unexpected_candidates": [
+            "במשק הריבית",
+            "משטח 100% עד של",
+            "כ''סה",
+            "רבעון",
+            "חדרה סיטי אאורה",
+            "ה\"הרא מתחם",
+            "חן רמת אאורה",
+            "גבעתיים ONLY",
+            "האורן פרויקט",
+            "פיבקו אאורה",
+            "חולון סרלין",
+            "א''ת, ברלין אליהו",
+            "יהוד( אשכנזי )LINK",
+            "מגרשים- KAVA",
+            "מגרש אורבן פארק",
+            "האגם ליד מגידו",
+            "BETWEEN",
+            "מתחם MONO",
+            "יונה כפר KY",
+            "מוקדמים",
+            "שוק",
+            "אילת באילת קרקע",
+            "א יסר'ג",
+            "סבא כפר סבא כפר",
+            "דגן בית דגן בית",
+            "יעקב באר - יעקב באר",
+            "גבעתיים אונלי",
+            "גן רמת אמפייר",
+            "יהוד לינק",
+            "אונו קרית האורן",
+            "ים בת פיבקו",
+            "ב ש\"רמה",
+            "חדרה אאורה",
+            "נתניה הסטריפ",
+            "חדרה רסקו",
+            "אאורה קבוצת כ''סה",
+            "עוזיאל",
+            "למרחב",
+            "זנגביל",
+            "אביב תל ידידיה",
+            "חצור חצור, בגין מנחם",
+            "אלנבי רחובות( ה)",
+            "גוש ההערכה נושא זיהוי",
+            "בתוספת 1.5%-0.4% .(ייןðלע ותðבטחו, ראה באור 15 להלן"
+          ],
+          "family_comparison": {
+            "construction": {
+              "expected": 2,
+              "detected": 1
+            },
+            "planning": {
+              "expected": 2,
+              "detected": 0
+            },
+            "completed_unsold_tail": {
+              "expected": 0,
+              "detected": 0
+            },
+            "land_reserve": {
+              "expected": 0,
+              "detected": 1
+            },
+            "urban_renewal_pipeline": {
+              "expected": 0,
+              "detected": 0
+            },
+            "material_project": {
+              "expected": 0,
+              "detected": 0
+            }
+          },
+          "lifecycle_stage_distribution": {
+            "under_construction": 27,
+            "planning_advanced": 8,
+            "land_reserve": 11
+          },
+          "disclosure_level_distribution": {
+            "operational_full": 20,
+            "pipeline_signature": 14,
+            "land_reserve": 11,
+            "material_very_high": 1
+          },
+          "missing_key_field_counts": {
+            "project_status": 31,
+            "total_units": 46,
+            "candidate_lifecycle_stage": 0,
+            "candidate_disclosure_level": 0
+          },
+          "conversion_backend_diagnostics": {
+            "page_count": 282,
+            "text_characters": 770587,
+            "table_count": 0,
+            "elapsed_ms": 25115.33
+          },
+          "conversion_table_count": 0,
+          "score": 0.4093
+        }
+      ]
+    },
+    {
+      "report_key": "megido_2025_annual",
+      "company_name_he": "מגידו י.ק. בע\"מ",
+      "report_name": "דוח תקופתי לשנת 2025",
+      "source_file_path": "C:\\Users\\simis\\Downloads\\1729842.pdf",
+      "expected_project_count": 8,
+      "expected_family_counts": {
+        "construction": 0,
+        "planning": 1,
+        "completed_unsold_tail": 0,
+        "land_reserve": 5,
+        "urban_renewal_pipeline": 0,
+        "material_project": 2
+      },
+      "results": [
+        {
+          "backend": "pypdf",
+          "candidate_count": 33,
+          "expected_project_count": 8,
+          "matched_expected_count": 5,
+          "project_recall": 0.625,
+          "family_recall": 0.6667,
+          "field_coverage": 0.625,
+          "false_split_count": 1,
+          "false_merge_count": 2,
+          "unmatched_rate": 0.8182,
+          "table_quality": 1.0,
+          "provenance_preservation": 1.0,
+          "missing_expected_projects": [
+            "ביטווין",
+            "עפולה",
+            "ג'סר א-זרקא"
+          ],
+          "unexpected_candidates": [
+            ")ובהמשך לדוחות בדבר",
+            "Square\" ביהוד",
+            "אאורה רחובות",
+            "אאורה נס ציונה",
+            "מכור(*)",
+            "מגידו על האגם",
+            "בתכנון ראשוני",
+            "לא לא",
+            "הוכר השפעת עליה של 5%",
+            "הוכר השפעת ירידה של 5%",
+            "הוכר השפעת ירידה של 10%",
+            "[Cap/Rate /",
+            "השוואה",
+            "ייעוד נוכחי",
+            "מגורים ומסחר זכויות בנייה מתוכננות יעוד/שימוש 1",
+            "וניהול להצלחה בת קיימא (ת\"יISO 9004 .)",
+            "חברת דיורים בע\"מ. 50%",
+            "סיווג כהתחייבות פיננסית או כמכשיר הוני",
+            "מכשירים הוניים",
+            "התחייבויות פיננסיות",
+            "גריעת התחייבויות פיננסיות",
+            "יז. הכרה בהכנסה",
+            ") \"טריו",
+            "\"נופי מונפורט",
+            "\"קרית עקרון",
+            "רוויה, מתוכן",
+            "בבניה רוויה, מתוכן"
+          ],
+          "family_comparison": {
+            "construction": {
+              "expected": 0,
+              "detected": 0
+            },
+            "planning": {
+              "expected": 1,
+              "detected": 1
+            },
+            "completed_unsold_tail": {
+              "expected": 0,
+              "detected": 0
+            },
+            "land_reserve": {
+              "expected": 5,
+              "detected": 5
+            },
+            "urban_renewal_pipeline": {
+              "expected": 0,
+              "detected": 0
+            },
+            "material_project": {
+              "expected": 2,
+              "detected": 0
+            }
+          },
+          "lifecycle_stage_distribution": {
+            "planning_advanced": 2,
+            "under_construction": 14,
+            "unknown": 1,
+            "land_reserve": 16
+          },
+          "disclosure_level_distribution": {
+            "pipeline_signature": 5,
+            "operational_full": 8,
+            "material_very_high": 4,
+            "land_reserve": 16
+          },
+          "missing_key_field_counts": {
+            "project_status": 16,
+            "total_units": 26,
+            "candidate_lifecycle_stage": 1,
+            "candidate_disclosure_level": 0
+          },
+          "conversion_backend_diagnostics": {
+            "page_count": 185,
+            "text_characters": 396216,
+            "table_count": 0,
+            "elapsed_ms": 14905.62
+          },
+          "conversion_table_count": 0,
+          "score": 0.5678
+        }
+      ]
+    },
+    {
+      "report_key": "rotem_shani_2025_annual",
+      "company_name_he": "רותם שני יזמות והשקעות בע\"מ",
+      "report_name": "דוח תקופתי לשנת 2025",
+      "source_file_path": "C:\\Users\\simis\\Downloads\\1729055.pdf",
+      "expected_project_count": 3,
+      "expected_family_counts": {
+        "construction": 3,
+        "planning": 0,
+        "completed_unsold_tail": 0,
+        "land_reserve": 0,
+        "urban_renewal_pipeline": 0,
+        "material_project": 0
+      },
+      "results": [
+        {
+          "backend": "pypdf",
+          "candidate_count": 41,
+          "expected_project_count": 3,
+          "matched_expected_count": 2,
+          "project_recall": 0.6667,
+          "family_recall": 0.0,
+          "field_coverage": 0.625,
+          "false_split_count": 3,
+          "false_merge_count": 0,
+          "unmatched_rate": 0.878,
+          "table_quality": 1.0,
+          "provenance_preservation": 1.0,
+          "missing_expected_projects": [
+            "מתחם הסביון, בית שמש"
+          ],
+          "unexpected_candidates": [
+            "דירות, עלייה",
+            "בנייתן של",
+            "כ-17",
+            "כ-4",
+            "לעומת תקופה מקבילה אשתקד",
+            "במסלול הרשויות המקומיות ובהם מוצעת בנייה של 25",
+            "עסקה משותפת בית שמש 50% פינוי בינוי",
+            "+ 400 מ\"ר",
+            "עיקרי",
+            "מ\"ר",
+            "אביב רותם שני אלה בע\"מ 100% תמ\"א",
+            "רותם שני אלה בע\"מ 100% תמ\"א",
+            "המס תכנון בחברה בת 93%",
+            "מרפסת, מחסן וחניה",
+            "מרפסת, מחסן ו-2 חניות",
+            "משולב בבינוי",
+            "הרצאות משולב בבינוי 36.125% מהתקבולים יזקפו",
+            "לטובת המוכרת . 63.875% מהתקבולים יזקפו",
+            "יחס הקומבינציה בעין ו/או בעסקת התמורות- 57% לחברה",
+            "מעטפת). 55% משווין הכולל של היחידות",
+            "יבי בפרויק ט (%)",
+            "מ\"ר",
+            "בדצמבר 2025 )%(",
+            "שטח חלקה (מ\"ר)",
+            "מצב תכנוני נוכחי מצב תכנוני מבוקש/מתוכנן",
+            "לאחר דיון",
+            "בתכנון מפורט",
+            "לקראת תחילת",
+            "הוגשה בקשה",
+            "הרצליה, שבעת הכוכבים מכר 15%",
+            "אלף מ\"ר",
+            "ל\"ר ל\"ר ל\"ר",
+            "תמ\"א 38/1",
+            "מכוחה יהיה ניתן להוציא היתרי בניה",
+            "הזכויות במקרקעין\"), והקמה של",
+            "מאושרת"
+          ],
+          "family_comparison": {
+            "construction": {
+              "expected": 3,
+              "detected": 0
+            },
+            "planning": {
+              "expected": 0,
+              "detected": 3
+            },
+            "completed_unsold_tail": {
+              "expected": 0,
+              "detected": 0
+            },
+            "land_reserve": {
+              "expected": 0,
+              "detected": 0
+            },
+            "urban_renewal_pipeline": {
+              "expected": 0,
+              "detected": 0
+            },
+            "material_project": {
+              "expected": 0,
+              "detected": 2
+            }
+          },
+          "lifecycle_stage_distribution": {
+            "urban_renewal_pipeline": 6,
+            "planning_advanced": 9,
+            "under_construction": 12,
+            "unknown": 5,
+            "land_reserve": 9
+          },
+          "disclosure_level_distribution": {
+            "pipeline_signature": 20,
+            "material_very_high": 9,
+            "operational_full": 3,
+            "land_reserve": 9
+          },
+          "missing_key_field_counts": {
+            "project_status": 5,
+            "total_units": 30,
+            "candidate_lifecycle_stage": 5,
+            "candidate_disclosure_level": 0
+          },
+          "conversion_backend_diagnostics": {
+            "page_count": 239,
+            "text_characters": 489474,
+            "table_count": 0,
+            "elapsed_ms": 16041.09
+          },
+          "conversion_table_count": 0,
+          "score": 0.3905
+        }
+      ]
+    },
+    {
+      "report_key": "amram_avraham_2024_annual",
+      "company_name_he": "עמרם אברהם",
+      "report_name": "דוח תקופתי לשנת 2024",
+      "source_file_path": "C:\\Users\\simis\\Downloads\\1653859.pdf",
+      "expected_project_count": 6,
+      "expected_family_counts": {
+        "construction": 3,
+        "planning": 1,
+        "completed_unsold_tail": 0,
+        "land_reserve": 0,
+        "urban_renewal_pipeline": 2,
+        "material_project": 0
+      },
+      "results": [
+        {
+          "backend": "pypdf",
+          "candidate_count": 84,
+          "expected_project_count": 6,
+          "matched_expected_count": 3,
+          "project_recall": 0.5,
+          "family_recall": 0.0,
+          "field_coverage": 0.4222,
+          "false_split_count": 5,
+          "false_merge_count": 2,
+          "unmatched_rate": 0.9048,
+          "table_quality": 1.0,
+          "provenance_preservation": 1.0,
+          "missing_expected_projects": [
+            "Neo",
+            "ALFA",
+            "THE ESTHER"
+          ],
+          "unexpected_candidates": [
+            "נדל\"ן יזמי (מ\"ר)",
+            "מופחת' ו",
+            "שוק חופשי, וכ- 3,537 מ\"ר",
+            "חופשי, וכ - 3,615 מ\"ר",
+            "נדל\"ן יזמי",
+            "בניינים בני18 קומות",
+            "שוק חופשי",
+            "בניה לטובת הבעלים) (100%)",
+            "חדרי מלון וכ-575 מ\"ר",
+            "מ\"ר מסחר 3/20260",
+            "גורדון וייצמן נתניה פינוי בינוי 50% 40% 67%",
+            "מ\"ר מסחר",
+            "מ\"ר מסחר 4/20270",
+            "מ\"ר מסחר 4/20280",
+            "מ\"ר מסחר 2/20270",
+            "עודכנו ל",
+            "כללו בין היתר",
+            "פינוי בינוי דרך למרחב",
+            "פרדס חנה 35%",
+            "שי חי אחזקות נדל\"ן בע\"מ 35%",
+            "חברה כלולה כ.ג. קבוצת גינת בע\"מ 30%",
+            "ויינדור יזמות נדל\"ו בע\"מ 37.5%",
+            "חברה כלולה שלושה צדדים שלישיים 12.5%",
+            "נדל\"ן להשקעה 50%",
+            "עמרם כראל אילת בע\"מ (להלן",
+            "מ\"ר",
+            "מ\"ר מסחר 107 270",
+            "מ\"ר מסחר 100",
+            "רובע בינלאומי",
+            "מ\"ר מסחר 116 128",
+            "מ\"ר מסחר 120 --- --- סנטרל שלב ג",
+            "לשיווק 88",
+            "ו-017,2 מ\"ר שטחי מסחר",
+            "ו-1,775 מ\"ר שטחי מסחר",
+            "מסחר 107",
+            "לקידום תכנית מתאימה שתכלול גם את המגרש",
+            "מסחר ותעסוקה 110",
+            "מדורגי",
+            "בבנייה רוויה 130",
+            "מדורגת, וכן 4 171 מ\"ר",
+            "הרשות המקומית מקדמת תב\"ע( בסמכות מחוזית ) לתוספת",
+            "מסחר, 27,000 מ\"ר משרדים",
+            "אשר יכלול",
+            "בגודל של 60 מ\"ר",
+            "כ\"א",
+            "למגורים; כ - 2,700 מ\"ר",
+            "מסחר; כ- 2,700 מ\"ר משרדים",
+            "מ\"ר מעון",
+            "יום 7",
+            "קיימות + 3 מחסנים",
+            "מ\"ר",
+            "פריים 0.35% - %.550",
+            "כן לא",
+            "פריים 0.35% - 0.55%",
+            "פריים + 1.25% - 1.5%",
+            "מתחם 2",
+            "מתחם 3",
+            "חופשי. מתחם 4",
+            "יחסי/ אקוויטי)",
+            "מופחת ו-170 בשוק חופשי, וכן שטחי מסחר",
+            "ע\"י מר אורן חסאן, מחזיקה",
+            "קרקע מיועדת לבניית מרכז",
+            "ושטחי שירות של 2,543 מ\"ר",
+            "הקמת מרכז",
+            "מ\"ר בייעוד תעשייה",
+            "קרקע מיועדת לבניית חוות שרתים",
+            "בהיקף של 15,000 מ\"ר",
+            "חדרי דיור מוגן",
+            "נדל\"ן להשקעה ונדל\"ן להשקעה בהקמה",
+            "נדל\"ן להשקעה ונדל\"ן להשקעה בהקמה",
+            "מקרקעין תנופורט - חדרה",
+            "אשר יכלול",
+            "דיבידנדים שהתקבלו מחברות כלולות ועסקאות משותפות",
+            "התחייבויות תלויות המתייחסות לחברות כלולות ועסקאות משותפות",
+            "במקרקעין שיכלול לפחות",
+            "א. התקשרויות"
+          ],
+          "family_comparison": {
+            "construction": {
+              "expected": 3,
+              "detected": 0
+            },
+            "planning": {
+              "expected": 1,
+              "detected": 0
+            },
+            "completed_unsold_tail": {
+              "expected": 0,
+              "detected": 0
+            },
+            "land_reserve": {
+              "expected": 0,
+              "detected": 1
+            },
+            "urban_renewal_pipeline": {
+              "expected": 2,
+              "detected": 0
+            },
+            "material_project": {
+              "expected": 0,
+              "detected": 7
+            }
+          },
+          "lifecycle_stage_distribution": {
+            "under_construction": 27,
+            "planning_advanced": 8,
+            "urban_renewal_pipeline": 24,
+            "land_reserve": 16,
+            "unknown": 9
+          },
+          "disclosure_level_distribution": {
+            "operational_full": 14,
+            "pipeline_signature": 42,
+            "land_reserve": 16,
+            "material_very_high": 12
+          },
+          "missing_key_field_counts": {
+            "project_status": 35,
+            "total_units": 49,
+            "candidate_lifecycle_stage": 9,
+            "candidate_disclosure_level": 0
+          },
+          "conversion_backend_diagnostics": {
+            "page_count": 320,
+            "text_characters": 782670,
+            "table_count": 0,
+            "elapsed_ms": 27553.73
+          },
+          "conversion_table_count": 0,
+          "score": 0.279
+        }
+      ]
+    },
+    {
+      "report_key": "azorim_2024_annual",
+      "company_name_he": "אזורים חברה להשקעות בפתוח ובבנין בע\"מ",
+      "report_name": "דוח תקופתי לשנת 2024",
+      "source_file_path": "C:\\Users\\simis\\Downloads\\1652753.pdf",
+      "expected_project_count": 5,
+      "expected_family_counts": {
+        "construction": 2,
+        "planning": 2,
+        "completed_unsold_tail": 1,
+        "land_reserve": 0,
+        "urban_renewal_pipeline": 0,
+        "material_project": 0
+      },
+      "results": [
+        {
+          "backend": "pypdf",
+          "candidate_count": 43,
+          "expected_project_count": 5,
+          "matched_expected_count": 1,
+          "project_recall": 0.2,
+          "family_recall": 0.1667,
+          "field_coverage": 0.1842,
+          "false_split_count": 0,
+          "false_merge_count": 0,
+          "unmatched_rate": 0.9767,
+          "table_quality": 1.0,
+          "provenance_preservation": 1.0,
+          "missing_expected_projects": [
+            "צומת פת\"",
+            "נופי בן שמן\"",
+            "הרצליה הילס",
+            "מעונות הסטודנטים בבת ים"
+          ],
+          "unexpected_candidates": [
+            "אזורים החזקות בינלאומיות בע\"מ (100%)(5 )",
+            "העלייה במדד",
+            "וכ- 17% לעומת שנת2022",
+            "החודשים הקודמים",
+            "החדשות ויד שניה עלו",
+            "המס החל על השבח הריאלי",
+            "שער העיר- שלב",
+            "א (*) גבעת שמואל 100% ל.ר רבעון 1",
+            "רמז8 )*( תל אביב 100% ל.ר רבעון 3",
+            "הרצליהVille מתחם5 )*( הרצליה 100% ל.ר רבעון 3",
+            "כן מדד תשומות",
+            "בהתאמות הנדרשות 37",
+            "מסחר / תעסוקה מוצעים (מ\"ר)",
+            "שבמסגרתו יהרסו 4 בנייני",
+            "Exchange רמת גן",
+            "מבנה האחזקה בפרוייקט 100%",
+            "לפי שימושים (באלפי מ\"ר) (*)",
+            "ההסכמים המסתיימים ( ב מ\"ר)",
+            "ההסכמים המסתיימים (באלפי מ\"ר)",
+            "הצגה בדוח",
+            "שימושים (באלפי מ\"ר) (*) 72 72",
+            "נכסים שנמכרו",
+            "המסתיימים (באלפי מ\"ר)",
+            "תכניות הכוללות",
+            "הוספתשימושי מגורים למגרש בייעוד תעסוקה או למסחר (למעט",
+            "מההשבחה. במקרים של מימוש בהיתר עד סוף2030",
+            "במתחמי פינוי בינוי, \"",
+            "מיליון ש\"ח",
+            "התקבלההודעת זכיה",
+            "מיליארד ש\"ח 0.3%",
+            "מעל8 מיליארד ש\"ח %0",
+            "שינוי סעיף תנועה",
+            "מיליארד ש\"ח 0.3%",
+            "מעל8 מיליארד ש\"ח %0",
+            "טכניקות הערכה לקביעת השווי ההוגן",
+            "השוואה הנתונים המשמעותיים שאינם ניתנים לצפייה",
+            "קריטי לחברה תוספת של 0.5%",
+            "בשווי ההוגן של נכסים בישראל והפחתה של 0.5%",
+            "תוספת של 0.5%",
+            "\"הכוכב\" בגליל ים",
+            "המסחר במתחם \"הנרקיס\" בראשון לציון",
+            "באלפי ש\"ח"
+          ],
+          "family_comparison": {
+            "construction": {
+              "expected": 2,
+              "detected": 1
+            },
+            "planning": {
+              "expected": 2,
+              "detected": 0
+            },
+            "completed_unsold_tail": {
+              "expected": 1,
+              "detected": 0
+            },
+            "land_reserve": {
+              "expected": 0,
+              "detected": 0
+            },
+            "urban_renewal_pipeline": {
+              "expected": 0,
+              "detected": 0
+            },
+            "material_project": {
+              "expected": 0,
+              "detected": 0
+            }
+          },
+          "lifecycle_stage_distribution": {
+            "planning_advanced": 8,
+            "land_reserve": 8,
+            "under_construction": 17,
+            "unknown": 3,
+            "urban_renewal_pipeline": 7
+          },
+          "disclosure_level_distribution": {
+            "pipeline_signature": 21,
+            "land_reserve": 8,
+            "operational_full": 10,
+            "material_very_high": 4
+          },
+          "missing_key_field_counts": {
+            "project_status": 26,
+            "total_units": 38,
+            "candidate_lifecycle_stage": 3,
+            "candidate_disclosure_level": 0
+          },
+          "conversion_backend_diagnostics": {
+            "page_count": 279,
+            "text_characters": 776002,
+            "table_count": 0,
+            "elapsed_ms": 26478.08
+          },
+          "conversion_table_count": 0,
+          "score": 0.2425
+        }
+      ]
+    }
+  ]
+}

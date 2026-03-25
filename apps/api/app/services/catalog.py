@@ -15,9 +15,13 @@ from app.models import (
     Company,
     FieldProvenance,
     ProjectAddress,
+    ProjectCompletedInventoryDetail,
+    ProjectConstructionMetrics,
+    ProjectFinancingDetail,
     ProjectLandReserveDetail,
     ProjectMaster,
     ProjectMaterialDisclosure,
+    ProjectPlanningDetail,
     ProjectSensitivityScenario,
     ProjectSnapshot,
     ProjectUrbanRenewalDetail,
@@ -36,9 +40,12 @@ class ProjectListFilters:
     q: str | None = None
     city: str | None = None
     company_id: UUID | None = None
+    lifecycle_stage: str | None = None
+    disclosure_level: str | None = None
     project_business_type: str | None = None
     government_program_type: str | None = None
     project_urban_renewal_type: str | None = None
+    project_status: str | None = None
     permit_status: str | None = None
     location_confidence: str | None = None
     page: int = 1
@@ -71,6 +78,7 @@ def _latest_snapshot_subquery() -> Select:
             ProjectSnapshot.avg_price_per_sqm_cumulative.label("avg_price_per_sqm_cumulative"),
             ProjectSnapshot.gross_profit_total_expected.label("gross_profit_total_expected"),
             ProjectSnapshot.gross_margin_expected_pct.label("gross_margin_expected_pct"),
+            ProjectSnapshot.detected_data_families.label("detected_data_families"),
             func.row_number()
             .over(
                 partition_by=ProjectSnapshot.project_id,
@@ -123,6 +131,38 @@ def _serialize_extension_row(row: object | None, fields: tuple[str, ...]) -> dic
 
 
 async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, snapshot_id: UUID) -> dict[str, dict[str, object | None]]:
+    construction = (
+        await session.execute(
+            select(ProjectConstructionMetrics).where(
+                ProjectConstructionMetrics.project_id == project_id,
+                ProjectConstructionMetrics.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    planning = (
+        await session.execute(
+            select(ProjectPlanningDetail).where(
+                ProjectPlanningDetail.project_id == project_id,
+                ProjectPlanningDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    completed_inventory = (
+        await session.execute(
+            select(ProjectCompletedInventoryDetail).where(
+                ProjectCompletedInventoryDetail.project_id == project_id,
+                ProjectCompletedInventoryDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
+    financing = (
+        await session.execute(
+            select(ProjectFinancingDetail).where(
+                ProjectFinancingDetail.project_id == project_id,
+                ProjectFinancingDetail.snapshot_id == snapshot_id,
+            )
+        )
+    ).scalar_one_or_none()
     material = (
         await session.execute(
             select(ProjectMaterialDisclosure).where(
@@ -159,7 +199,64 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
     return {
         key: value
         for key, value in {
-            "material_disclosure": _serialize_extension_row(
+            "construction_metrics": _serialize_extension_row(
+                construction,
+                (
+                    "engineering_completion_rate",
+                    "financial_completion_rate",
+                    "average_unit_sqm",
+                    "sold_area_sqm_period",
+                    "sold_area_sqm_cumulative",
+                    "signed_area_sqm",
+                    "unsold_area_sqm",
+                    "planned_construction_start_date",
+                    "planned_construction_end_date",
+                    "planned_marketing_start_date",
+                    "planned_marketing_end_date",
+                ),
+            ),
+            "planning_metrics": _serialize_extension_row(
+                planning,
+                (
+                    "planning_status_text",
+                    "permit_status_text",
+                    "requested_rights_text",
+                    "intended_uses",
+                    "intended_units",
+                    "estimated_start_date",
+                    "estimated_completion_date",
+                    "planned_marketing_start_date",
+                    "planning_dependencies",
+                ),
+            ),
+            "completed_inventory_tail": _serialize_extension_row(
+                completed_inventory,
+                (
+                    "completed_units",
+                    "delivered_units",
+                    "unsold_completed_units",
+                    "inventory_cost_book_value",
+                    "available_for_sale_units",
+                    "occupancy_status_text",
+                ),
+            ),
+            "financing_details": _serialize_extension_row(
+                financing,
+                (
+                    "financing_institution",
+                    "facility_amount",
+                    "utilization_amount",
+                    "unused_capacity",
+                    "financing_terms",
+                    "covenants_summary",
+                    "non_recourse_flag",
+                    "surplus_release_conditions",
+                    "pledged_or_secured_notes",
+                    "advances_received",
+                    "receivables_from_signed_contracts",
+                ),
+            ),
+            "material_project_disclosure": _serialize_extension_row(
                 material,
                 (
                     "financing_institution",
@@ -176,7 +273,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "special_project_notes",
                 ),
             ),
-            "sensitivity_scenario": _serialize_extension_row(
+            "sensitivity_scenarios": _serialize_extension_row(
                 sensitivity,
                 (
                     "sales_price_plus_5_effect",
@@ -190,7 +287,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "base_gross_profit_not_yet_recognized",
                 ),
             ),
-            "urban_renewal_detail": _serialize_extension_row(
+            "urban_renewal_pipeline": _serialize_extension_row(
                 urban_renewal,
                 (
                     "existing_units",
@@ -207,7 +304,7 @@ async def _snapshot_extension_blocks(session: AsyncSession, project_id: UUID, sn
                     "accounting_treatment_summary",
                 ),
             ),
-            "land_reserve_detail": _serialize_extension_row(
+            "land_reserve_details": _serialize_extension_row(
                 land_reserve,
                 (
                     "land_area_sqm",
@@ -298,12 +395,22 @@ def _apply_project_filters(stmt: Select, filters: ProjectListFilters, latest_sna
         stmt = stmt.where(ProjectMaster.city == filters.city)
     if filters.company_id:
         stmt = stmt.where(ProjectMaster.company_id == filters.company_id)
+    if filters.lifecycle_stage:
+        stmt = stmt.where(
+            func.coalesce(latest_snapshot.c.lifecycle_stage, ProjectMaster.lifecycle_stage) == filters.lifecycle_stage
+        )
+    if filters.disclosure_level:
+        stmt = stmt.where(
+            func.coalesce(latest_snapshot.c.disclosure_level, ProjectMaster.disclosure_level) == filters.disclosure_level
+        )
     if filters.project_business_type:
         stmt = stmt.where(ProjectMaster.project_business_type == filters.project_business_type)
     if filters.government_program_type:
         stmt = stmt.where(ProjectMaster.government_program_type == filters.government_program_type)
     if filters.project_urban_renewal_type:
         stmt = stmt.where(ProjectMaster.project_urban_renewal_type == filters.project_urban_renewal_type)
+    if filters.project_status:
+        stmt = stmt.where(latest_snapshot.c.project_status == filters.project_status)
     if filters.permit_status:
         stmt = stmt.where(latest_snapshot.c.permit_status == filters.permit_status)
     if filters.location_confidence:
@@ -476,6 +583,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                 latest_snapshot.c.avg_price_per_sqm_cumulative,
                 latest_snapshot.c.gross_profit_total_expected,
                 latest_snapshot.c.gross_margin_expected_pct,
+                latest_snapshot.c.detected_data_families,
                 Report.id.label("report_id"),
                 Report.filing_reference,
                 Report.period_end_date,
@@ -587,6 +695,7 @@ async def get_project_detail(session: AsyncSession, project_id: UUID) -> dict | 
                     "gross_margin_expected_pct",
                 ],
             ),
+            "data_families": list(detail["detected_data_families"] or extension_blocks.keys()),
             "extension_blocks": extension_blocks,
         },
         "derived_metrics": {
@@ -899,6 +1008,38 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
             .order_by(ProjectMaster.project_business_type.asc())
         )
     ).scalars().all()
+    lifecycle_stages = (
+        await session.execute(
+            select(func.coalesce(latest_snapshot.c.lifecycle_stage, ProjectMaster.lifecycle_stage))
+            .select_from(ProjectMaster)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(
+                ProjectMaster.is_publicly_visible.is_(True),
+                func.coalesce(latest_snapshot.c.lifecycle_stage, ProjectMaster.lifecycle_stage).is_not(None),
+            )
+            .distinct()
+            .order_by(func.coalesce(latest_snapshot.c.lifecycle_stage, ProjectMaster.lifecycle_stage).asc())
+        )
+    ).scalars().all()
+    disclosure_levels = (
+        await session.execute(
+            select(func.coalesce(latest_snapshot.c.disclosure_level, ProjectMaster.disclosure_level))
+            .select_from(ProjectMaster)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(
+                ProjectMaster.is_publicly_visible.is_(True),
+                func.coalesce(latest_snapshot.c.disclosure_level, ProjectMaster.disclosure_level).is_not(None),
+            )
+            .distinct()
+            .order_by(func.coalesce(latest_snapshot.c.disclosure_level, ProjectMaster.disclosure_level).asc())
+        )
+    ).scalars().all()
     government_types = (
         await session.execute(
             select(ProjectMaster.government_program_type)
@@ -928,6 +1069,19 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
             .order_by(latest_snapshot.c.permit_status.asc())
         )
     ).scalars().all()
+    project_statuses = (
+        await session.execute(
+            select(latest_snapshot.c.project_status)
+            .select_from(ProjectMaster)
+            .join(
+                latest_snapshot,
+                (latest_snapshot.c.project_id == ProjectMaster.id) & (latest_snapshot.c.row_num == 1),
+            )
+            .where(ProjectMaster.is_publicly_visible.is_(True), latest_snapshot.c.project_status.is_not(None))
+            .distinct()
+            .order_by(latest_snapshot.c.project_status.asc())
+        )
+    ).scalars().all()
     location_confidences = (
         await session.execute(
             select(ProjectMaster.location_confidence)
@@ -940,9 +1094,12 @@ async def get_filter_metadata(session: AsyncSession) -> dict:
     return {
         "companies": [{"id": str(item["id"]), "label": item["name_he"]} for item in companies],
         "cities": cities,
+        "lifecycle_stages": lifecycle_stages,
+        "disclosure_levels": disclosure_levels,
         "project_business_types": business_types,
         "government_program_types": government_types,
         "project_urban_renewal_types": urban_types,
+        "project_statuses": project_statuses,
         "permit_statuses": permit_statuses,
         "location_confidences": location_confidences,
     }

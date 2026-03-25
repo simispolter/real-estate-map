@@ -4,12 +4,12 @@ export default function LoadingProjectsPage() {
   return (
     <div className="map-first-loading">
       <Panel
-        eyebrow="Loading map-first discovery"
-        title="Preparing the public map"
-        description="Fetching filters, marker payloads, and the current side-panel cards."
+        eyebrow="Loading database view"
+        title="Preparing the project database"
+        description="Fetching project filters, counts, and the current canonical project table."
       >
         <p className="panel-copy">
-          The public route now opens into the map-first research experience, so this loading state mirrors the final layout instead of leaving a blank screen.
+          This phase prioritizes a clear ingestion-to-database workflow, so the public loading state mirrors the filter and table layout instead of a blank screen.
         </p>
       </Panel>
       <section className="map-first-loading-grid">
