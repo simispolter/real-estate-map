@@ -84,12 +84,16 @@ class AdminQaFamilyCoverageItem(BaseModel):
 
 class AdminReportQaSummary(BaseModel):
     total_candidates: int = 0
+    extracted_candidates: int = 0
+    manual_candidates: int = 0
     projects_detected: int = 0
     matched_existing_projects: int = 0
     new_projects_needed: int = 0
+    new_canonical_projects_created: int = 0
     ambiguous_candidates: int = 0
     rejected_or_ignored_candidates: int = 0
     published_candidates: int = 0
+    unresolved_pending_candidates: int = 0
     missing_key_field_total: int = 0
     latest_parser_sections_found: int = 0
     latest_parser_candidate_count: int = 0

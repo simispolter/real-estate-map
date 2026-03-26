@@ -898,12 +898,16 @@ export interface AdminReportQa {
   reportId: string;
   summary: {
     totalCandidates: number;
+    extractedCandidates: number;
+    manualCandidates: number;
     projectsDetected: number;
     matchedExistingProjects: number;
     newProjectsNeeded: number;
+    newCanonicalProjectsCreated: number;
     ambiguousCandidates: number;
     rejectedOrIgnoredCandidates: number;
     publishedCandidates: number;
+    unresolvedPendingCandidates: number;
     missingKeyFieldTotal: number;
     latestParserSectionsFound: number;
     latestParserCandidateCount: number;

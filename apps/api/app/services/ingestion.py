@@ -663,6 +663,8 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
         "report_id": report.id,
         "summary": {
             "total_candidates": len(candidates),
+            "extracted_candidates": sum(1 for candidate in candidates if candidate.parser_run_id is not None),
+            "manual_candidates": sum(1 for candidate in candidates if candidate.parser_run_id is None),
             "projects_detected": len(
                 {
                     candidate.candidate_project_name.strip().lower()
@@ -676,6 +678,11 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
             "new_projects_needed": sum(
                 1 for candidate in candidates if candidate.matching_status == "new_project_needed"
             ),
+            "new_canonical_projects_created": sum(
+                1
+                for candidate in candidates
+                if candidate.matching_status == "new_project_needed" and candidate.publish_status == "published"
+            ),
             "ambiguous_candidates": sum(
                 1 for candidate in candidates if candidate.matching_status == "ambiguous_match"
             ),
@@ -684,6 +691,11 @@ async def get_admin_report_qa(session: AsyncSession, report_id: UUID) -> dict | 
             ),
             "published_candidates": sum(
                 1 for candidate in candidates if candidate.publish_status == "published"
+            ),
+            "unresolved_pending_candidates": sum(
+                1
+                for candidate in candidates
+                if candidate.publish_status != "published" and candidate.matching_status != "ignored"
             ),
             "missing_key_field_total": sum(missing_field_counts.values()),
             "latest_parser_sections_found": latest_parser_run.sections_found if latest_parser_run else 0,

@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 outputs/tmp/
+apps/api/input_reports/
 node_modules/
 .next/
 dist/

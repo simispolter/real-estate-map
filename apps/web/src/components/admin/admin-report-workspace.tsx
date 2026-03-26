@@ -54,9 +54,38 @@ type CandidateFormState = {
   project_business_type: string;
   project_status: string;
   permit_status: string;
+  total_units: string;
+  marketed_units: string;
+  sold_units_cumulative: string;
+  unsold_units: string;
+  avg_price_per_sqm_cumulative: string;
+  gross_profit_total_expected: string;
+  gross_margin_expected_pct: string;
   location_confidence: string;
   review_notes: string;
 };
+
+function stringifyMetric(value: number | null | undefined) {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function parseNullableInteger(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseNullableNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function reportFormFromItem(report: AdminReportDetail): ReportFormState {
   return {
@@ -80,6 +109,13 @@ function candidateFormFromItem(candidate: AdminCandidateDetail): CandidateFormSt
     project_business_type: candidate.projectBusinessType ?? "regular_dev",
     project_status: candidate.projectStatus ?? "",
     permit_status: candidate.permitStatus ?? "",
+    total_units: stringifyMetric(candidate.totalUnits),
+    marketed_units: stringifyMetric(candidate.marketedUnits),
+    sold_units_cumulative: stringifyMetric(candidate.soldUnitsCumulative),
+    unsold_units: stringifyMetric(candidate.unsoldUnits),
+    avg_price_per_sqm_cumulative: stringifyMetric(candidate.avgPricePerSqmCumulative),
+    gross_profit_total_expected: stringifyMetric(candidate.grossProfitTotalExpected),
+    gross_margin_expected_pct: stringifyMetric(candidate.grossMarginExpectedPct),
     location_confidence: candidate.locationConfidence,
     review_notes: candidate.reviewNotes ?? "",
   };
@@ -96,6 +132,13 @@ function emptyManualCandidateState(): CandidateFormState {
     project_business_type: "regular_dev",
     project_status: "",
     permit_status: "",
+    total_units: "",
+    marketed_units: "",
+    sold_units_cumulative: "",
+    unsold_units: "",
+    avg_price_per_sqm_cumulative: "",
+    gross_profit_total_expected: "",
+    gross_margin_expected_pct: "",
     location_confidence: "city_only",
     review_notes: "",
   };
@@ -266,6 +309,13 @@ export function AdminReportWorkspace({
         project_business_type: manualCandidate.project_business_type,
         project_status: manualCandidate.project_status || null,
         permit_status: manualCandidate.permit_status || null,
+        total_units: parseNullableInteger(manualCandidate.total_units),
+        marketed_units: parseNullableInteger(manualCandidate.marketed_units),
+        sold_units_cumulative: parseNullableInteger(manualCandidate.sold_units_cumulative),
+        unsold_units: parseNullableInteger(manualCandidate.unsold_units),
+        avg_price_per_sqm_cumulative: parseNullableNumber(manualCandidate.avg_price_per_sqm_cumulative),
+        gross_profit_total_expected: parseNullableNumber(manualCandidate.gross_profit_total_expected),
+        gross_margin_expected_pct: parseNullableNumber(manualCandidate.gross_margin_expected_pct),
         location_confidence: manualCandidate.location_confidence,
         value_origin_type: "manual",
         confidence_level: "medium",
@@ -300,6 +350,13 @@ export function AdminReportWorkspace({
         project_business_type: candidateForm.project_business_type,
         project_status: candidateForm.project_status || null,
         permit_status: candidateForm.permit_status || null,
+        total_units: parseNullableInteger(candidateForm.total_units),
+        marketed_units: parseNullableInteger(candidateForm.marketed_units),
+        sold_units_cumulative: parseNullableInteger(candidateForm.sold_units_cumulative),
+        unsold_units: parseNullableInteger(candidateForm.unsold_units),
+        avg_price_per_sqm_cumulative: parseNullableNumber(candidateForm.avg_price_per_sqm_cumulative),
+        gross_profit_total_expected: parseNullableNumber(candidateForm.gross_profit_total_expected),
+        gross_margin_expected_pct: parseNullableNumber(candidateForm.gross_margin_expected_pct),
         location_confidence: candidateForm.location_confidence,
         review_notes: candidateForm.review_notes || null,
         review_status: "pending",
@@ -544,6 +601,89 @@ export function AdminReportWorkspace({
               ))}
             </select>
           </label>
+          <label className="filter-field">
+            <span>Section family</span>
+            <select
+              value={manualCandidate.candidate_section_kind}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, candidate_section_kind: event.target.value }))}
+            >
+              <option value="">Unknown</option>
+              {SOURCE_SECTION_KINDS.map((value) => (
+                <option key={value} value={value}>
+                  {formatSectionKindLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Total units</span>
+            <input
+              inputMode="numeric"
+              value={manualCandidate.total_units}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, total_units: event.target.value }))}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Marketed units</span>
+            <input
+              inputMode="numeric"
+              value={manualCandidate.marketed_units}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, marketed_units: event.target.value }))}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Sold units</span>
+            <input
+              inputMode="numeric"
+              value={manualCandidate.sold_units_cumulative}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, sold_units_cumulative: event.target.value }))}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Unsold units</span>
+            <input
+              inputMode="numeric"
+              value={manualCandidate.unsold_units}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, unsold_units: event.target.value }))}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Avg price / sqm</span>
+            <input
+              inputMode="decimal"
+              value={manualCandidate.avg_price_per_sqm_cumulative}
+              onChange={(event) =>
+                setManualCandidate((current) => ({ ...current, avg_price_per_sqm_cumulative: event.target.value }))
+              }
+            />
+          </label>
+          <label className="filter-field">
+            <span>Expected gross profit</span>
+            <input
+              inputMode="decimal"
+              value={manualCandidate.gross_profit_total_expected}
+              onChange={(event) =>
+                setManualCandidate((current) => ({ ...current, gross_profit_total_expected: event.target.value }))
+              }
+            />
+          </label>
+          <label className="filter-field">
+            <span>Expected gross margin %</span>
+            <input
+              inputMode="decimal"
+              value={manualCandidate.gross_margin_expected_pct}
+              onChange={(event) =>
+                setManualCandidate((current) => ({ ...current, gross_margin_expected_pct: event.target.value }))
+              }
+            />
+          </label>
+          <label className="filter-field">
+            <span>Reviewer note</span>
+            <textarea
+              value={manualCandidate.review_notes}
+              onChange={(event) => setManualCandidate((current) => ({ ...current, review_notes: event.target.value }))}
+            />
+          </label>
         </div>
         <div className="form-actions">
           <button
@@ -725,6 +865,70 @@ export function AdminReportWorkspace({
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="filter-field">
+                <span>Total units</span>
+                <input
+                  inputMode="numeric"
+                  value={candidateForm.total_units}
+                  onChange={(event) => setCandidateForm((current) => (current ? { ...current, total_units: event.target.value } : current))}
+                />
+              </label>
+              <label className="filter-field">
+                <span>Marketed units</span>
+                <input
+                  inputMode="numeric"
+                  value={candidateForm.marketed_units}
+                  onChange={(event) => setCandidateForm((current) => (current ? { ...current, marketed_units: event.target.value } : current))}
+                />
+              </label>
+              <label className="filter-field">
+                <span>Sold units</span>
+                <input
+                  inputMode="numeric"
+                  value={candidateForm.sold_units_cumulative}
+                  onChange={(event) =>
+                    setCandidateForm((current) => (current ? { ...current, sold_units_cumulative: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="filter-field">
+                <span>Unsold units</span>
+                <input
+                  inputMode="numeric"
+                  value={candidateForm.unsold_units}
+                  onChange={(event) => setCandidateForm((current) => (current ? { ...current, unsold_units: event.target.value } : current))}
+                />
+              </label>
+              <label className="filter-field">
+                <span>Avg price / sqm</span>
+                <input
+                  inputMode="decimal"
+                  value={candidateForm.avg_price_per_sqm_cumulative}
+                  onChange={(event) =>
+                    setCandidateForm((current) => (current ? { ...current, avg_price_per_sqm_cumulative: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="filter-field">
+                <span>Expected gross profit</span>
+                <input
+                  inputMode="decimal"
+                  value={candidateForm.gross_profit_total_expected}
+                  onChange={(event) =>
+                    setCandidateForm((current) => (current ? { ...current, gross_profit_total_expected: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="filter-field">
+                <span>Expected gross margin %</span>
+                <input
+                  inputMode="decimal"
+                  value={candidateForm.gross_margin_expected_pct}
+                  onChange={(event) =>
+                    setCandidateForm((current) => (current ? { ...current, gross_margin_expected_pct: event.target.value } : current))
+                  }
+                />
               </label>
               <label className="filter-field">
                 <span>Reviewer note</span>
